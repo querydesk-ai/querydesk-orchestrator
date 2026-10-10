@@ -11,9 +11,9 @@ from dataclasses import dataclass, field
 
 import anyio
 
-from app.models.schemas import ResolutionType, Source
-from app.services import qdrant_store, sparse
-from app.services.fireworks_client import chat_completion, embed_query
+from querydesk.models.schemas import ResolutionType, Source
+from querydesk.services.llm.fireworks import chat_completion, embed_query
+from querydesk.services.retrieval import qdrant_store, sparse
 
 NO_CONTEXT_REPLY = (
     "I don't have information on that in the knowledge base. "

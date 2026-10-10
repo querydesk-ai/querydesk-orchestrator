@@ -4,9 +4,9 @@ these run offline and assert on behaviour rather than on model output.
 """
 import pytest
 
-from app.models.schemas import ResolutionType
-from app.services import rag
-from app.services.qdrant_store import RetrievedChunk
+from querydesk.models.schemas import ResolutionType
+from querydesk.services import rag
+from querydesk.services.retrieval.qdrant_store import RetrievedChunk
 
 
 def _chunk(text="Commission is credited on the 7th.", title="Commission schedule", score=0.9):

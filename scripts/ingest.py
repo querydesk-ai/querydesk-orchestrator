@@ -19,15 +19,15 @@ import json
 import sys
 from pathlib import Path
 
-# Allow running as a plain script from the repo root.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# Allow running as a plain script without an editable install (src/ layout).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from qdrant_client import models  # noqa: E402
 
-from app.config import settings  # noqa: E402
-from app.services import qdrant_store, sparse  # noqa: E402
-from app.services.chunking import chunk_text  # noqa: E402
-from app.services.fireworks_client import embed_documents  # noqa: E402
+from querydesk.core.config import settings  # noqa: E402
+from querydesk.services.llm.fireworks import embed_documents  # noqa: E402
+from querydesk.services.retrieval import qdrant_store, sparse  # noqa: E402
+from querydesk.services.retrieval.chunking import chunk_text  # noqa: E402
 
 
 def parse_front_matter(raw: str) -> tuple[dict, str]:

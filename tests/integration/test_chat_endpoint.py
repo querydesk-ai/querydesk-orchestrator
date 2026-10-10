@@ -4,11 +4,11 @@ POST /chat HTTP contract. rag.answer is patched, so no network and no API key.
 import httpx
 import pytest
 
-from app.main import app
-from app.models.schemas import ResolutionType, Source
-from app.routers import chat as chat_router
-from app.services.fireworks_client import FireworksError
-from app.services.qdrant_store import QdrantStoreError
+from querydesk.api.routes import chat as chat_router
+from querydesk.main import app
+from querydesk.models.schemas import ResolutionType, Source
+from querydesk.services.llm.fireworks import FireworksError
+from querydesk.services.retrieval.qdrant_store import QdrantStoreError
 
 
 @pytest.fixture

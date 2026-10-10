@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "querydesk-orchestrator"
+version = "0.3.0"
+description = "QueryDesk orchestrator — hybrid RAG and SR routing for an internal AI service desk"
+requires-python = ">=3.11"
+
+dependencies = [
+  "fastapi==0.115.0",
+  "uvicorn[standard]==0.30.6",
+  "pydantic==2.9.2",
+  "pydantic-settings==2.5.2",
+  "httpx==0.27.2",
+  "python-dotenv==1.0.1",
+  # Vector search. fastembed supplies the CPU BM25 sparse vectors.
+  "qdrant-client==1.19.1",
+  "fastembed==0.5.1",
+  # Used from PRD Day 6 onward (Redis slot-filling, Postgres orchestrator tables).
+  "redis==8.1.0",
+  "asyncpg==0.31.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==9.1.1",
+  # respx mocks the Fireworks HTTP API so the suite runs with no credentials.
+  "respx==0.21.1",
+  "ruff==0.14.2",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# src/ layout: importable without `pip install -e .` (CI, fresh checkouts).
+pythonpath = ["src"]
+# Integration tests still run offline — they drive the ASGI app in-process.
+# Anything needing live credentials belongs in scripts/, not tests/.
+markers = [
+  "anyio: run an async test on the anyio backend",
+]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "W"]

@@ -14,7 +14,8 @@ from dataclasses import dataclass
 
 from qdrant_client import AsyncQdrantClient, models
 
-from app.config import settings
+from querydesk.core.config import settings
+from querydesk.core.errors import VectorStoreError
 
 DENSE_VECTOR = "dense"
 SPARSE_VECTOR = "bm25"
@@ -24,8 +25,8 @@ SPARSE_VECTOR = "bm25"
 _POINT_NAMESPACE = uuid.UUID("6f9619ff-8b86-d011-b42d-00c04fc964ff")
 
 
-class QdrantStoreError(RuntimeError):
-    """Raised on missing config or any Qdrant failure. Mirrors FireworksError."""
+class QdrantStoreError(VectorStoreError):
+    """Raised on missing config or any Qdrant failure."""
 
 
 @dataclass
@@ -68,9 +69,16 @@ async def ensure_collections(recreate: bool = False) -> None:
     Create both collections if absent. Idempotent, so it's safe to call on
     every app start — which is the point: bad Qdrant config should fail at boot
     rather than on a user's first message.
+
+    An existing collection whose dense size differs from settings.embed_dim
+    (e.g. built for a previous embedding model) raises rather than being
+    reused — otherwise every query would fail later with an opaque 502.
     """
     client = get_client()
     try:
+        if not recreate:
+            await _check_dense_dims(client)
+
         if recreate:
             for name in (
                 settings.qdrant_kb_collection,
@@ -111,6 +119,21 @@ async def ensure_collections(recreate: bool = False) -> None:
         raise
     except Exception as e:
         raise QdrantStoreError(f"Failed to ensure Qdrant collections: {e}") from e
+
+
+async def _check_dense_dims(client: AsyncQdrantClient) -> None:
+    for name in (settings.qdrant_kb_collection, settings.qdrant_categories_collection):
+        if not await client.collection_exists(name):
+            continue
+        info = await client.get_collection(name)
+        vectors = info.config.params.vectors
+        dense = vectors.get(DENSE_VECTOR) if isinstance(vectors, dict) else None
+        if dense is None or dense.size != settings.embed_dim:
+            found = dense.size if dense else "no 'dense' vector"
+            raise QdrantStoreError(
+                f"Collection {name!r} has dense size {found}, but embed_dim is "
+                f"{settings.embed_dim}. Re-index with `python scripts/ingest.py --recreate`."
+            )
 
 
 async def ping() -> bool:

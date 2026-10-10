@@ -13,10 +13,11 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
 
 These gate everything below. Nothing in Day 1 is verifiable until the first two are done.
 
-- [!] **T** Create a Fireworks account and put a real key in `.env` as `FIREWORKS_API_KEY`.
-  Verify: `embed_documents(["ping"])` returns a 768-length vector.
+- [x] **T** Create a Fireworks account and put a real key in `.env` as `FIREWORKS_API_KEY`.
+  Verify: `embed_documents(["ping"])` returns a 4096-length vector (`qwen3-embedding-8b`;
+  the PRD's nomic model is no longer served on Fireworks).
   *Blocks: all ingestion and the whole answer path.*
-- [!] **T** Write the 11 knowledge-base articles into `data/kb/*.md` — one per category plus one
+- [x] **T** Write the 11 knowledge-base articles into `data/kb/*.md` — one per category plus one
   general IT-policy doc. Each needs YAML front matter: `title`, `category_id`, `source_url`.
   *Blocks: ingestion has nothing to index. This is content work, not code.*
 - [ ] **B** Create the GitHub org and the three repos (`querydesk-orchestrator`,
@@ -32,35 +33,35 @@ These gate everything below. Nothing in Day 1 is verifiable until the first two 
 
 **Done when:** contract v1.1 merged; both CI pipelines green.
 
-- [ ] **T** `git init`; `.gitignore` covering `.env`, `venv/`, `__pycache__/`, `.pytest_cache/`,
+- [x] **T** `git init`; `.gitignore` covering `.env`, `venv/`, `__pycache__/`, `.pytest_cache/`,
   `data/kb/`. **Confirm `.env` is untracked before the first commit** — it holds live Qdrant,
   Postgres and Redis credentials.
-- [ ] **T** Pin dependencies in `requirements.txt`: add `fastembed` (sparse BM25, CPU) and `respx`
+- [x] **T** Pin dependencies (now in `pyproject.toml`; `requirements.txt` removed): add `fastembed` (sparse BM25, CPU) and `respx`
   (test mocking); pin `qdrant-client==1.19.1`; drop the duplicated `python-dotenv`; pin `redis`,
   `asyncpg`, `pytest`.
-- [ ] **T** Author `data/categories.json` — all 10 category ids with `name`, `domain`, `approval`
+- [x] **T** Author `data/categories.json` — all 10 category ids with `name`, `domain`, `approval`
   (`none` / `always` / `conditional`), `required_fields`, `default_path`, and a prose `description`
   written for semantic matching. This file is the **single source of truth** shared with the
   ticketing service.
-- [ ] **T** Extend `app/config.py` with collection names, `embed_dim`, `retrieval_top_k`,
+- [x] **T** Extend `core/config.py` with collection names, `embed_dim`, `retrieval_top_k`,
   `retrieval_prefetch_limit`, `chunk_chars`, `chunk_overlap`, `embed_batch_size`, and the
   `confidence_high` / `confidence_mid` placeholders (calibrated on Day 3, unused until then).
-- [ ] **T** `fireworks_client.py`: add `embed_documents()` / `embed_query()` applying the
-  `search_document:` / `search_query:` prefixes `nomic-embed-text-v1.5` requires, plus request
-  batching at `embed_batch_size`. **Retrieval quality silently degrades without the prefixes.**
-- [ ] **T** `app/services/chunking.py` — pure `chunk_text(text, size, overlap)`: paragraph-packing
+- [x] **T** `services/llm/fireworks.py`: add `embed_documents()` / `embed_query()` — documents as-is,
+  queries wrapped in `QUERY_INSTRUCTION` (`qwen3-embedding-8b` replaced nomic and its prefixes), plus request
+  batching at `embed_batch_size`. **Retrieval quality silently degrades without the query instruction.**
+- [x] **T** `services/retrieval/chunking.py` — pure `chunk_text(text, size, overlap)`: paragraph-packing
   with overlap carry and a hard split for oversized paragraphs. No langchain.
-- [ ] **T** `app/services/sparse.py` — wrap `fastembed.SparseTextEmbedding("Qdrant/bm25")`.
+- [x] **T** `services/retrieval/sparse.py` — wrap `fastembed.SparseTextEmbedding("Qdrant/bm25")`.
   Load the model once at module level; it is expensive to construct.
-- [ ] **T** `app/services/qdrant_store.py` — `ensure_collections()` creating `kb_chunks` with named
+- [x] **T** `services/retrieval/qdrant_store.py` — `ensure_collections()` creating `kb_chunks` with named
   vectors `dense` (cosine, `embed_dim`) **and** `bm25` sparse with `modifier=Modifier.IDF`, plus a
   dense-only `categories` collection. Add batched `upsert_kb_chunks()` / `upsert_categories()`.
-- [ ] **T** `scripts/ingest.py --recreate` — parse front matter, chunk, dense + sparse embed, upsert
+- [x] **T** `scripts/ingest.py --recreate` — parse front matter, chunk, dense + sparse embed, upsert
   both collections, print per-file chunk counts. Use a deterministic uuid5 point id over
   `source_path + chunk_index` so re-runs update in place instead of duplicating.
-- [ ] **T** Move `tests/test_check_services.py` → `scripts/check_services.py`. Its `test_`-prefixed
+- [x] **T** Move `tests/test_check_services.py` → `scripts/check_services.py`. Its `test_`-prefixed
   filename is why `pytest` currently collects **zero** tests.
-- [ ] **T** `.github/workflows/ci.yml` — Python 3.11, install, `pytest -q`, **gitleaks**.
+- [x] **T** `.github/workflows/ci.yml` — Python 3.11, `pip install -e .[dev]`, `ruff`, `pytest -q`, **gitleaks**.
 - [ ] **P** Spring Boot skeleton, Flyway migration for `service_requests`, `/health`, Swagger UI.
 
 ---
@@ -69,28 +70,33 @@ These gate everything below. Nothing in Day 1 is verifiable until the first two 
 
 **Done when:** 10 informational questions answered with sources; SR CRUD works in Swagger (P).
 
-- [ ] **T** `qdrant_store.hybrid_search(dense_vec, sparse_vec)` → `(fused_hits, top_dense_score)`.
+- [x] **T** `qdrant_store.hybrid_search(dense_vec, sparse_vec)` → `(fused_hits, top_dense_score)`.
   One `query_batch_points` call carrying two requests: a `FusionQuery(Fusion.RRF)` over dense +
   sparse `Prefetch` branches, and a dense-only `limit=1` query for the confidence score.
   **PRD Gap #2: fused RRF scores are rank-based — confidence must come from the dense similarity.**
-- [ ] **T** `app/services/rag.py::answer()` — embed query (dense + sparse), hybrid search, build a
+- [x] **T** `services/rag.py::answer()` — embed query (dense + sparse), hybrid search, build a
   numbered context block, generate a grounded answer with `temperature=0.2`, return reply + sources
   + `top_dense_score`. No hits → `MANUAL_ESCALATION` with a fixed reply and **no LLM call**.
-- [ ] **T** `app/models/schemas.py` — `ResolutionType` enum (`RAG`, `MANUAL_ESCALATION` only for
+- [x] **T** `models/schemas.py` — `ResolutionType` enum (`RAG`, `MANUAL_ESCALATION` only for
   now; `AUTO_SR` lands with the decision layer), a `Source` model, and `sources` +
   `retrieval_confidence` on `ChatResponse`.
-- [ ] **T** `app/routers/chat.py` — delegate to `rag.answer()`; map `FireworksError` and
+- [x] **T** `api/routes/chat.py` — delegate to `rag.answer()`; map `FireworksError` and
   `QdrantStoreError` to HTTP 502. Fix the `tags=[""]` typo.
-- [ ] **T** `app/main.py` — QueryDesk title, `ensure_collections()` in a lifespan handler so bad
+- [x] **T** `main.py` — QueryDesk title, `ensure_collections()` in a lifespan handler so bad
   Qdrant config fails at boot, and `GET /health/ready` that pings Qdrant (keep `/health` cheap).
-- [ ] **T** Test suite, fully offline: `conftest.py` with an `anyio_backend` fixture;
-  `test_chunking.py` (pure); `test_fireworks_client.py` (**respx** — assert the prefixes are applied
+- [x] **T** Test suite, fully offline: `conftest.py` with an `anyio_backend` fixture;
+  `test_chunking.py` (pure); `unit/test_fireworks.py` (**respx** — assert the query instruction is applied
   and batching splits correctly); `test_rag.py` (grounded vs escalation, asserting the escalation
   path does **not** call the LLM); `test_chat_endpoint.py` (`ASGITransport`, 200 + 502 mapping).
-- [ ] **T** **Acceptance gate:** run all 10 informational questions (2 per category) and confirm
+- [x] **T** Restructure into a `src/querydesk` package (`api/`, `core/`, `models/`, `services/llm`,
+  `services/retrieval`) with `tests/unit` + `tests/integration`; one `UpstreamError` family → 502;
+  `ensure_collections()` refuses a collection whose dense size ≠ `embed_dim`. KB re-indexed at 4096.
+- [~] **T** **Acceptance gate:** run all 10 informational questions (2 per category) and confirm
   each returns a correct source citation. Separately verify the lexical half — query an exact error
   code or product name that appears verbatim in one article and confirm BM25 surfaces it. That case
   is the entire reason the PRD specifies hybrid rather than dense-only retrieval.
+  *Smoke-tested 3 questions (password reset, commission, UAT extension) — correct citations.
+  Full 10 + the lexical check still to run.*
 - [ ] **P** `POST /sr`, `GET /sr/{id}`, `GET /sr` with filters; 400 on an unknown category.
 
 ---

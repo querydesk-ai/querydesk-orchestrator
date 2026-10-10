@@ -9,10 +9,9 @@ router stays a thin HTTP adapter.
 
 from fastapi import APIRouter, HTTPException
 
-from app.models.schemas import ChatRequest, ChatResponse
-from app.services import rag
-from app.services.fireworks_client import FireworksError
-from app.services.qdrant_store import QdrantStoreError
+from querydesk.core.errors import UpstreamError
+from querydesk.models.schemas import ChatRequest, ChatResponse
+from querydesk.services import rag
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -21,9 +20,11 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 async def chat(req: ChatRequest) -> ChatResponse:
     try:
         result = await rag.answer(req.query)
-    except (FireworksError, QdrantStoreError) as e:
-        # Both are upstream dependency failures, not bad input — 502, not 500.
-        raise HTTPException(status_code=502, detail=str(e))
+    except UpstreamError as e:
+        # Any dependency failure (Fireworks, Qdrant, future ticketing client)
+        # is a 502: the request was fine, something behind us wasn't. Catching
+        # the family means a new dependency needs no change here.
+        raise HTTPException(status_code=502, detail=str(e)) from e
 
     return ChatResponse(
         reply=result.reply,

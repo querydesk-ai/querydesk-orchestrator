@@ -6,7 +6,7 @@
 # Knowledge-base content is supplied per-deployment, not versioned here.
 data/kb/
 
-# Virtualenvs (this project's lives one level up, at sr-bot-phase0/venv)
+# Virtualenvs
 venv/
 .venv/
 

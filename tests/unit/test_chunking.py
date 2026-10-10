@@ -1,6 +1,6 @@
 import pytest
 
-from app.services.chunking import chunk_text
+from querydesk.services.retrieval.chunking import chunk_text
 
 
 def test_empty_and_whitespace_input_yields_no_chunks():

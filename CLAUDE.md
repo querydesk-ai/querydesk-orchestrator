@@ -25,18 +25,22 @@ other person. The orchestrator never reaches into the ticketing service's databa
 
 ## Commands
 
-The venv lives at `sr-bot-phase0/venv` — one level *above* this directory, not `./.venv`.
+The package uses a `src/` layout (`src/querydesk`). The venv is `./.venv` with an editable install
+(`pip install -e ".[dev]"`); pytest also sets `pythonpath = ["src"]`, so tests run without it.
 
 ```bash
-../venv/Scripts/python.exe -m pytest -q          # full suite; runs offline, needs no API key
-../venv/Scripts/python.exe -m pytest tests/test_chunking.py -q          # one file
-../venv/Scripts/python.exe -m pytest tests/test_rag.py::test_escalates_when_no_hits -q   # one test
+.venv/Scripts/python.exe -m pytest -q                              # full suite; offline, no API key
+.venv/Scripts/python.exe -m pytest tests/unit/test_chunking.py -q  # one file
+.venv/Scripts/python.exe -m pytest tests/unit/test_rag.py::test_no_hits_escalates_without_calling_the_llm -q
+.venv/Scripts/python.exe -m ruff check .                           # lint (also runs in CI)
 
-../venv/Scripts/python.exe scripts/check_services.py    # Qdrant / Redis / Postgres reachability
-../venv/Scripts/python.exe scripts/ingest.py --recreate # re-index data/kb into Qdrant
+.venv/Scripts/python.exe scripts/check_services.py    # Qdrant / Redis / Postgres reachability
+.venv/Scripts/python.exe scripts/ingest.py --recreate # re-index data/kb into Qdrant
 
-uvicorn app.main:app --reload
+.venv/Scripts/uvicorn querydesk.main:app --reload
 ```
+
+Dependencies live in `pyproject.toml` only — there is no `requirements.txt`.
 
 The test suite must stay fully offline — mock Fireworks with `respx`, monkeypatch the embed and
 search functions. A test that needs a live API key or a live Qdrant does not belong in `tests/`.
@@ -52,10 +56,10 @@ Everything after SR creation is async (webhook → Redis → Celery).
 ### Module conventions
 
 - **One module owns each external dependency**, and nothing else may talk to it directly:
-  `services/fireworks_client.py` (LLM + embeddings), `services/qdrant_store.py` (vector search),
-  `services/sparse.py` (BM25). Each raises its own `*Error(RuntimeError)` so routers keep a single
-  error-handling shape and map them all to HTTP 502.
-- **`app/config.py` is the only reader of the environment.** Nothing else touches `os.environ`;
+  `services/llm/fireworks.py` (LLM + embeddings), `services/retrieval/qdrant_store.py` (vector
+  search), `services/retrieval/sparse.py` (BM25). Each raises a subclass of `UpstreamError`
+  (`core/errors.py`), and the routers map that whole family to HTTP 502 in one place.
+- **`core/config.py` is the only reader of the environment.** Nothing else touches `os.environ`;
   import the shared `settings` instance instead of re-instantiating `Settings`.
 - `services/rag.py` orchestrates retrieval + generation. It is a function the decision layer *calls* —
   routing rules do not go in it.
@@ -71,10 +75,13 @@ Everything after SR creation is async (webhook → Redis → Celery).
    sees, the dense score decides **how confident** we are. Never thread a fused score into a
    confidence threshold.
 
-2. **`nomic-embed-text-v1.5` is instruction-prefixed.** Documents must be embedded as
-   `"search_document: <text>"` and queries as `"search_query: <text>"`. Use `embed_documents()` /
-   `embed_query()` — never call the raw embed function directly, or retrieval quality silently
-   degrades. Both sides of a comparison must use the matching prefix.
+2. **`qwen3-embedding-8b` is asymmetric.** (The PRD's `nomic-embed-text-v1.5` is no longer served
+   on Fireworks.) Documents are embedded **as-is**; queries are wrapped in `QUERY_INSTRUCTION`
+   (`Instruct: … 
+Query: <text>`). Always use `embed_documents()` / `embed_query()`, never
+   `embed_text()` on raw text, and never add the old `search_document:` / `search_query:` prefixes.
+   It emits 4096 dims (`embed_dim`). Changing the model means re-running `ingest.py --recreate`;
+   `ensure_collections()` refuses to start against a collection of the wrong size.
 
 3. **`data/categories.json` is the single source of truth** for the 10 categories — ids, approval
    rules and required fields — shared with the ticketing service. Never hardcode a category id,

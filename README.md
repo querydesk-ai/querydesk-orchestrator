@@ -14,15 +14,15 @@ decision layer, slot filling and notifications are Days 3–10.
 ## Setup
 
 ```bash
-python -m venv venv
-venv\Scripts\activate            # macOS/Linux: source venv/bin/activate
-pip install -r requirements.txt
+python -m venv .venv
+.venv\Scripts\activate           # macOS/Linux: source .venv/bin/activate
+pip install -e ".[dev]"          # src/ layout; dependencies are pinned in pyproject.toml
 
 cp .env.example .env
 # Fill in FIREWORKS_API_KEY and the QDRANT_* values at minimum.
 ```
 
-`.env` must sit in this directory (next to `.env.example`), not inside `app/`.
+`.env` must sit in this directory (next to `.env.example`), not inside `src/`.
 
 ## Ingest the knowledge base
 
@@ -50,7 +50,7 @@ Re-running is safe: point ids are deterministic, so chunks update in place inste
 ## Run
 
 ```bash
-uvicorn app.main:app --reload
+uvicorn querydesk.main:app --reload
 ```
 
 ```bash
@@ -75,8 +75,9 @@ needs no API key and no running services.
 
 ```bash
 pytest -q
-pytest tests/test_rag.py -q
-pytest tests/test_rag.py::test_no_hits_escalates_without_calling_the_llm -q
+pytest tests/unit/test_rag.py -q
+pytest tests/unit/test_rag.py::test_no_hits_escalates_without_calling_the_llm -q
+ruff check .
 ```
 
 Check that the backing services are reachable (separate from the app, so a failure points at
@@ -89,17 +90,25 @@ python scripts/check_services.py
 ## Layout
 
 ```
-app/
-  config.py                     # all settings, read from .env — nothing else touches os.environ
-  main.py                       # FastAPI app, /health, /health/ready
-  routers/chat.py               # POST /chat
+src/querydesk/
+  main.py                       # FastAPI app + lifespan (ensure_collections at boot)
+  core/
+    config.py                   # all settings, read from .env — nothing else touches os.environ
+    errors.py                   # UpstreamError family → HTTP 502
+  api/routes/
+    chat.py                     # POST /chat
+    health.py                   # /health, /health/ready
   models/schemas.py             # request/response shapes
   services/
     rag.py                      # retrieval + grounded answer generation
-    qdrant_store.py             # the only module that talks to Qdrant
-    fireworks_client.py         # the only module that talks to Fireworks
-    sparse.py                   # BM25 sparse vectors (fastembed, CPU)
-    chunking.py                 # pure text chunking
+    llm/fireworks.py            # the only module that talks to Fireworks
+    retrieval/
+      qdrant_store.py           # the only module that talks to Qdrant
+      sparse.py                 # BM25 sparse vectors (fastembed, CPU)
+      chunking.py               # pure text chunking
+tests/
+  unit/                         # pure + mocked-dependency tests
+  integration/                  # ASGI app driven in-process, still offline
 data/
   categories.json               # the 10 categories — single source of truth
   kb/                           # knowledge-base articles (gitignored)
