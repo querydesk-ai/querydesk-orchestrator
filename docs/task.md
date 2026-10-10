@@ -91,12 +91,12 @@ These gate everything below. Nothing in Day 1 is verifiable until the first two 
 - [x] **T** Restructure into a `src/querydesk` package (`api/`, `core/`, `models/`, `services/llm`,
   `services/retrieval`) with `tests/unit` + `tests/integration`; one `UpstreamError` family → 502;
   `ensure_collections()` refuses a collection whose dense size ≠ `embed_dim`. KB re-indexed at 4096.
-- [~] **T** **Acceptance gate:** run all 10 informational questions (2 per category) and confirm
+- [x] **T** **Acceptance gate:** run all 10 informational questions (2 per category) and confirm
   each returns a correct source citation. Separately verify the lexical half — query an exact error
   code or product name that appears verbatim in one article and confirm BM25 surfaces it. That case
   is the entire reason the PRD specifies hybrid rather than dense-only retrieval.
-  *Smoke-tested 3 questions (password reset, commission, UAT extension) — correct citations.
-  Full 10 + the lexical check still to run.*
+  *Done via the eval set: 20/20 informational questions cite the expected article at hit@1,
+  including all 3 error-code (lexical) rows — see `docs/eval-report-v0.md`.*
 - [ ] **P** `POST /sr`, `GET /sr/{id}`, `GET /sr` with filters; 400 on an unknown category.
 
 ---
@@ -108,11 +108,17 @@ particular depend on facts the PRD says are unknown until the Day 4 Jev Playgrou
 
 ### Day 3 — router + eval set
 *Done when: eval report v0; every ticketing transition tested.*
-- [ ] **T** Semantic router over the `categories` collection; LLM tie-break only when the top two
-  scores are close.
-- [ ] **T** Write the 60-query labelled eval set (30 action requests, 20 informational, 10
-  out-of-scope/ambiguous) in `querydesk-docs`.
-- [ ] **T** Calibration script that sets `confidence_high` / `confidence_mid` from the eval set.
+- [x] **T** Semantic router over the `categories` collection; LLM tie-break only when the top two
+  scores are close. *Built (`services/routing/router.py`); the tie-break is disabled after the eval —
+  similarity alone 49/50, tie-break 44/50 at ~1.4 s.*
+- [x] **T** Write the 60-query labelled eval set (30 action requests, 20 informational, 10
+  out-of-scope/ambiguous). *In `eval/eval_set.jsonl` for now; moves to `querydesk-docs` once it
+  exists.*
+- [x] **T** Calibration script that sets `confidence_high` / `confidence_mid` from the eval set.
+  *`scripts/eval_run.py` + `scripts/eval_report.py` → `docs/eval-report-v0.md`. Calibrated:
+  high 0.56, mid 0.49, router_min 0.43. SR-bound category accuracy 100% (target ≥ 90%).*
+- [!] **T** **Risk:** dense embedding is 1.6–2.2 s per query, so the answer path can't meet
+  p95 < 3 s. Decide before Day 8 (local embedding model, caching, or a faster hosted model).
 - [ ] **P** Status state machine, `PATCH /sr/{id}/status`, 409 on invalid moves, status history.
 
 ### Day 4 — decision layer · **Checkpoint 1**

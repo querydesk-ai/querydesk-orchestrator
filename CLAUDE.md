@@ -41,6 +41,8 @@ uv run ruff format .                        # format (CI runs `ruff format --che
 
 uv run scripts/check_services.py            # Qdrant / Redis / Postgres reachability
 uv run scripts/ingest.py --recreate         # re-index data/kb into Qdrant
+uv run scripts/eval_run.py                  # 60-query eval vs live services -> eval/results/
+uv run scripts/eval_report.py               # proposals + docs/eval-report-v0.md (never edits config)
 
 uv run uvicorn querydesk.main:app --reload
 ```
@@ -69,6 +71,10 @@ Everything after SR creation is async (webhook → Redis → Celery).
   import the shared `settings` instance instead of re-instantiating `Settings`.
 - `services/rag.py` orchestrates retrieval + generation. It is a function the decision layer *calls* —
   routing rules do not go in it.
+- `services/retrieval/query.py::embed_query_vectors()` embeds a message **once**; pass the result to
+  both `rag.answer(vectors=...)` and `routing/router.route()`. Embedding is the slowest step (~2 s).
+- `services/routing/router.py` reports the top-two categories and whether it is confident; it never
+  decides answer-vs-SR — that is the decision layer's job (Day 4).
 - Use the **async** Qdrant client (`AsyncQdrantClient`). The `/chat` path is async and the sync client
   would block the event loop. `fastembed` is sync and CPU-bound, so call it through
   `anyio.to_thread.run_sync` from async code.
@@ -93,9 +99,10 @@ Query: <text>`). Always use `embed_documents()` / `embed_query()`, never
    rules and required fields — shared with the ticketing service. Never hardcode a category id,
    required-field list or approval flag anywhere in the code.
 
-4. **Retrieval thresholds are calibrated, not guessed.** `confidence_high` / `confidence_mid` in
-   config are placeholders until the 60-query eval set calibrates them (PRD Day 3). Don't tune them
-   by hand against a single query.
+4. **Thresholds are calibrated, not guessed.** `confidence_high` / `confidence_mid` /
+   `router_min_score` come from the 60-query eval set (`eval/eval_set.jsonl`,
+   `docs/eval-report-v0.md`). Don't tune them by hand against a single query: change the eval set,
+   re-run `eval_run.py` + `eval_report.py`, and record the decision in the report.
 
 5. **Qdrant's sparse vector needs `modifier=models.Modifier.IDF`** to score BM25 correctly. Omitting
    it is silent — search still "works", just badly.
