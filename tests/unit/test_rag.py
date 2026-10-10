@@ -8,6 +8,7 @@ import pytest
 from querydesk.models.schemas import ResolutionType
 from querydesk.services import rag
 from querydesk.services.retrieval.qdrant_store import RetrievedChunk
+from querydesk.services.retrieval.query import QueryVectors
 
 
 def _chunk(text="Commission is credited on the 7th.", title="Commission schedule", score=0.9):
@@ -24,16 +25,12 @@ def _chunk(text="Commission is credited on the 7th.", title="Commission schedule
 
 @pytest.fixture
 def stub_embeddings(monkeypatch):
-    """Both embedders are stubbed; retrieval is what each test varies."""
+    """Embedding is stubbed; retrieval is what each test varies."""
 
-    async def fake_embed_query(text, model=None):
-        return [0.1, 0.2]
+    async def fake_embed_query_vectors(text):
+        return QueryVectors(dense=[0.1, 0.2], sparse=object())
 
-    async def fake_sparse(text):
-        return object()
-
-    monkeypatch.setattr(rag, "embed_query", fake_embed_query)
-    monkeypatch.setattr(rag.sparse, "sparse_embed_query_async", fake_sparse)
+    monkeypatch.setattr(rag, "embed_query_vectors", fake_embed_query_vectors)
 
 
 @pytest.fixture
@@ -169,3 +166,24 @@ async def test_snippet_is_truncated_for_the_api_response(monkeypatch, stub_embed
 
     # The citation carries a preview, not the whole chunk.
     assert len(result.sources[0].snippet) == 300
+
+
+@pytest.mark.anyio
+async def test_precomputed_vectors_skip_embedding(monkeypatch, llm_spy):
+    """The router shares the dense vector; answer() must not embed a second time."""
+
+    async def must_not_embed(text):
+        raise AssertionError("embedded twice")
+
+    monkeypatch.setattr(rag, "embed_query_vectors", must_not_embed)
+    seen = {}
+
+    async def fake_search(dense_vector, sparse_vector, top_k=None):
+        seen["dense"] = dense_vector
+        return [_chunk()], 0.8
+
+    monkeypatch.setattr(rag.qdrant_store, "hybrid_search", fake_search)
+
+    await rag.answer("q", vectors=QueryVectors(dense=[0.5], sparse=object()))
+
+    assert seen["dense"] == [0.5]
