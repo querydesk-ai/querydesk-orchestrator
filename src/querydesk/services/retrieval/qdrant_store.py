@@ -41,6 +41,14 @@ class RetrievedChunk:
     score: float
 
 
+@dataclass
+class CategoryHit:
+    category_id: str
+    name: str
+    description: str
+    score: float
+
+
 _client: AsyncQdrantClient | None = None
 
 
@@ -227,3 +235,33 @@ async def hybrid_search(
     top_dense_score = dense_points[0].score if dense_points else 0.0
 
     return hits, top_dense_score
+
+
+async def search_categories(dense_vector: list[float], limit: int = 2) -> list[CategoryHit]:
+    """
+    Nearest categories to a query, best first. Scores are real cosine
+    similarities (dense only, no fusion), so the router can threshold them.
+
+    Name and description come back from the payload written by ingest.py from
+    categories.json, so nothing here hardcodes a category.
+    """
+    try:
+        response = await get_client().query_points(
+            collection_name=settings.qdrant_categories_collection,
+            query=dense_vector,
+            using=DENSE_VECTOR,
+            limit=limit,
+            with_payload=True,
+        )
+    except Exception as e:
+        raise QdrantStoreError(f"Category search failed: {e}") from e
+
+    return [
+        CategoryHit(
+            category_id=(p.payload or {}).get("category_id", ""),
+            name=(p.payload or {}).get("name", ""),
+            description=(p.payload or {}).get("description", ""),
+            score=p.score,
+        )
+        for p in response.points
+    ]

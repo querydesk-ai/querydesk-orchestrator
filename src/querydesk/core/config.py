@@ -77,6 +77,15 @@ class Settings(BaseSettings):
     confidence_high: float = 0.75
     confidence_mid: float = 0.55
 
+    # --- Semantic router (PRD F3) ----------------------------------------
+    # Cosine similarity of the query to a category description. Placeholders
+    # until the eval set calibrates them (scripts/eval_report.py).
+    # Below router_min_score the router isn't confident -> escalate.
+    router_min_score: float = 0.40
+    # When the top two categories are closer than this, ask the LLM to pick.
+    router_tie_margin: float = 0.03
+    router_tie_break_enabled: bool = True
+
     # --- Content ---------------------------------------------------------
     kb_dir: Path = BASE_DIR / "data" / "kb"
     categories_file: Path = BASE_DIR / "data" / "categories.json"
