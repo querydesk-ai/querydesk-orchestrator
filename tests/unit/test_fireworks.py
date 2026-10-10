@@ -2,6 +2,7 @@
 Fireworks client tests. Fully offline — respx intercepts the HTTP calls, so
 these run in CI with no API key.
 """
+
 import httpx
 import pytest
 import respx
@@ -51,9 +52,7 @@ async def test_embed_documents_sends_text_unmodified():
 
     import json
 
-    assert json.loads(route.calls.last.request.content)["input"] == [
-        "how do I reset my password"
-    ]
+    assert json.loads(route.calls.last.request.content)["input"] == ["how do I reset my password"]
 
 
 @pytest.mark.anyio
@@ -155,9 +154,7 @@ async def test_embed_failure_names_the_failing_batch(monkeypatch):
 @respx.mock
 async def test_chat_completion_returns_the_reply_text():
     respx.post(CHAT_URL).mock(
-        return_value=httpx.Response(
-            200, json={"choices": [{"message": {"content": "the answer"}}]}
-        )
+        return_value=httpx.Response(200, json={"choices": [{"message": {"content": "the answer"}}]})
     )
 
     assert await fw.chat_completion([{"role": "user", "content": "q"}]) == "the answer"
@@ -169,9 +166,7 @@ async def test_chat_completion_sends_low_temperature_by_default():
     import json
 
     route = respx.post(CHAT_URL).mock(
-        return_value=httpx.Response(
-            200, json={"choices": [{"message": {"content": "x"}}]}
-        )
+        return_value=httpx.Response(200, json={"choices": [{"message": {"content": "x"}}]})
     )
 
     await fw.chat_completion([{"role": "user", "content": "q"}])
@@ -260,9 +255,7 @@ async def test_chat_uses_configured_token_budget(monkeypatch):
 
     monkeypatch.setattr(settings, "chat_max_tokens", 2048)
     route = respx.post(CHAT_URL).mock(
-        return_value=httpx.Response(
-            200, json={"choices": [{"message": {"content": "x"}}]}
-        )
+        return_value=httpx.Response(200, json={"choices": [{"message": {"content": "x"}}]})
     )
 
     await fw.chat_completion([{"role": "user", "content": "q"}])
@@ -277,9 +270,7 @@ async def test_explicit_max_tokens_is_not_replaced_by_default():
     import json
 
     route = respx.post(CHAT_URL).mock(
-        return_value=httpx.Response(
-            200, json={"choices": [{"message": {"content": "x"}}]}
-        )
+        return_value=httpx.Response(200, json={"choices": [{"message": {"content": "x"}}]})
     )
 
     await fw.chat_completion([{"role": "user", "content": "q"}], max_tokens=0)

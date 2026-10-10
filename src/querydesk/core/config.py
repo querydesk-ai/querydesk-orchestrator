@@ -4,6 +4,7 @@ Postgres, Redis) reads its settings from here — nothing reaches into
 os.environ directly elsewhere in the codebase. Makes it trivial to see
 everything this app depends on in one place, and to swap values in tests.
 """
+
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict

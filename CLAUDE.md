@@ -25,22 +25,28 @@ other person. The orchestrator never reaches into the ticketing service's databa
 
 ## Commands
 
-The package uses a `src/` layout (`src/querydesk`). The venv is `./.venv` with an editable install
-(`pip install -e ".[dev]"`); pytest also sets `pythonpath = ["src"]`, so tests run without it.
+The package uses a `src/` layout (`src/querydesk`) and is managed with **uv**: `uv sync` builds
+`./.venv` from `uv.lock` (Python from `.python-version`, dev group included). pytest also sets
+`pythonpath = ["src"]`, so tests import the package without an install.
 
 ```bash
-.venv/Scripts/python.exe -m pytest -q                              # full suite; offline, no API key
-.venv/Scripts/python.exe -m pytest tests/unit/test_chunking.py -q  # one file
-.venv/Scripts/python.exe -m pytest tests/unit/test_rag.py::test_no_hits_escalates_without_calling_the_llm -q
-.venv/Scripts/python.exe -m ruff check .                           # lint (also runs in CI)
+uv sync                                     # install / update .venv from uv.lock
+uv add <pkg>  /  uv add --dev <pkg>         # add a dependency (updates pyproject + uv.lock)
 
-.venv/Scripts/python.exe scripts/check_services.py    # Qdrant / Redis / Postgres reachability
-.venv/Scripts/python.exe scripts/ingest.py --recreate # re-index data/kb into Qdrant
+uv run pytest -q                            # full suite; offline, no API key
+uv run pytest tests/unit/test_chunking.py -q
+uv run pytest tests/unit/test_rag.py::test_no_hits_escalates_without_calling_the_llm -q
+uv run ruff check . --fix                   # lint (CI runs it)
+uv run ruff format .                        # format (CI runs `ruff format --check`)
 
-.venv/Scripts/uvicorn querydesk.main:app --reload
+uv run scripts/check_services.py            # Qdrant / Redis / Postgres reachability
+uv run scripts/ingest.py --recreate         # re-index data/kb into Qdrant
+
+uv run uvicorn querydesk.main:app --reload
 ```
 
-Dependencies live in `pyproject.toml` only — there is no `requirements.txt`.
+Dependencies live in `pyproject.toml` + `uv.lock` only — no `requirements.txt`. Commit `uv.lock`
+with every dependency change; CI runs `uv sync --locked` and fails if it is stale.
 
 The test suite must stay fully offline — mock Fireworks with `respx`, monkeypatch the embed and
 search functions. A test that needs a live API key or a live Qdrant does not belong in `tests/`.

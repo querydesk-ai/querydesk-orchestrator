@@ -2,6 +2,7 @@
 ensure_collections() dimension guard. A fake client stands in for Qdrant, so
 no network is involved.
 """
+
 from types import SimpleNamespace
 
 import pytest

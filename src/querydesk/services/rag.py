@@ -7,6 +7,7 @@ message should be answered at all — that's the decision layer (PRD Day 4),
 which calls this function for the ANSWER paths and bypasses it for the SR
 paths. Keep routing rules out of here.
 """
+
 from dataclasses import dataclass, field
 
 import anyio
@@ -41,9 +42,7 @@ class RagResult:
 
 
 def _build_context(hits: list[qdrant_store.RetrievedChunk]) -> str:
-    return "\n\n".join(
-        f"[{i}] {hit.title}\n{hit.text}" for i, hit in enumerate(hits, start=1)
-    )
+    return "\n\n".join(f"[{i}] {hit.title}\n{hit.text}" for i, hit in enumerate(hits, start=1))
 
 
 def _to_sources(hits: list[qdrant_store.RetrievedChunk]) -> list[Source]:

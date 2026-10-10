@@ -1,6 +1,7 @@
 """
 POST /chat HTTP contract. rag.answer is patched, so no network and no API key.
 """
+
 import httpx
 import pytest
 
@@ -15,9 +16,7 @@ from querydesk.services.retrieval.qdrant_store import QdrantStoreError
 def client():
     # ASGITransport drives the app in-process; no server, no lifespan, so the
     # startup ensure_collections() never reaches for a real Qdrant.
-    return httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://test"
-    )
+    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
 
 
 @pytest.mark.anyio
@@ -64,6 +63,7 @@ async def test_chat_returns_reply_sources_and_confidence(monkeypatch, client):
 @pytest.mark.anyio
 async def test_escalation_is_a_200_with_no_sources(monkeypatch, client):
     """Escalation is a valid outcome, not an error — the client must get 200."""
+
     async def fake_answer(query):
         return chat_router.rag.RagResult(
             reply="I don't have information on that.",

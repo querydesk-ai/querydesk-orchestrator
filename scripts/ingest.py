@@ -13,6 +13,7 @@ Usage:
     python scripts/ingest.py
     python scripts/ingest.py --recreate
 """
+
 import argparse
 import asyncio
 import json

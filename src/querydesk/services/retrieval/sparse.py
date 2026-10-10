@@ -9,6 +9,7 @@ BM25 will not.
 fastembed is synchronous and CPU-bound, so async callers must go through the
 `*_async` helpers rather than calling the sync functions on the event loop.
 """
+
 import anyio
 from qdrant_client import models
 

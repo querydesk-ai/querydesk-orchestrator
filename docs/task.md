@@ -61,7 +61,7 @@ These gate everything below. Nothing in Day 1 is verifiable until the first two 
   `source_path + chunk_index` so re-runs update in place instead of duplicating.
 - [x] **T** Move `tests/test_check_services.py` → `scripts/check_services.py`. Its `test_`-prefixed
   filename is why `pytest` currently collects **zero** tests.
-- [x] **T** `.github/workflows/ci.yml` — Python 3.11, `pip install -e .[dev]`, `ruff`, `pytest -q`, **gitleaks**.
+- [x] **T** `.github/workflows/ci.yml` — Python 3.11, `uv sync --locked`, `ruff check` + `ruff format --check`, `pytest -q`, **gitleaks**.
 - [ ] **P** Spring Boot skeleton, Flyway migration for `service_requests`, `/health`, Swagger UI.
 
 ---

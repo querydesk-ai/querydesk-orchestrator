@@ -2,6 +2,7 @@
 RAG orchestration tests. The embed/search/generate calls are monkeypatched, so
 these run offline and assert on behaviour rather than on model output.
 """
+
 import pytest
 
 from querydesk.models.schemas import ResolutionType
@@ -24,6 +25,7 @@ def _chunk(text="Commission is credited on the 7th.", title="Commission schedule
 @pytest.fixture
 def stub_embeddings(monkeypatch):
     """Both embedders are stubbed; retrieval is what each test varies."""
+
     async def fake_embed_query(text, model=None):
         return [0.1, 0.2]
 
@@ -55,9 +57,7 @@ def _stub_search(monkeypatch, hits, dense_score):
 
 
 @pytest.mark.anyio
-async def test_grounded_answer_returns_rag_with_sources(
-    monkeypatch, stub_embeddings, llm_spy
-):
+async def test_grounded_answer_returns_rag_with_sources(monkeypatch, stub_embeddings, llm_spy):
     _stub_search(monkeypatch, [_chunk()], 0.82)
 
     result = await rag.answer("when is my commission credited?")
@@ -71,9 +71,7 @@ async def test_grounded_answer_returns_rag_with_sources(
 
 
 @pytest.mark.anyio
-async def test_no_hits_escalates_without_calling_the_llm(
-    monkeypatch, stub_embeddings, llm_spy
-):
+async def test_no_hits_escalates_without_calling_the_llm(monkeypatch, stub_embeddings, llm_spy):
     """
     The core guardrail: with nothing retrieved we must not ask the model to
     answer anyway. Asserting the LLM was never called is the real test — the
@@ -106,9 +104,7 @@ async def test_confidence_is_the_dense_score_not_a_fused_score(
 
 
 @pytest.mark.anyio
-async def test_confidence_is_reported_even_when_escalating(
-    monkeypatch, stub_embeddings, llm_spy
-):
+async def test_confidence_is_reported_even_when_escalating(monkeypatch, stub_embeddings, llm_spy):
     _stub_search(monkeypatch, [], 0.17)
 
     result = await rag.answer("unrelated question")
@@ -118,9 +114,7 @@ async def test_confidence_is_reported_even_when_escalating(
 
 
 @pytest.mark.anyio
-async def test_context_is_numbered_and_sent_to_the_llm(
-    monkeypatch, stub_embeddings, llm_spy
-):
+async def test_context_is_numbered_and_sent_to_the_llm(monkeypatch, stub_embeddings, llm_spy):
     _stub_search(
         monkeypatch,
         [_chunk(text="First article.", title="A"), _chunk(text="Second article.", title="B")],
@@ -137,9 +131,7 @@ async def test_context_is_numbered_and_sent_to_the_llm(
 
 
 @pytest.mark.anyio
-async def test_system_prompt_forbids_outside_knowledge(
-    monkeypatch, stub_embeddings, llm_spy
-):
+async def test_system_prompt_forbids_outside_knowledge(monkeypatch, stub_embeddings, llm_spy):
     _stub_search(monkeypatch, [_chunk()], 0.8)
 
     await rag.answer("a question")
@@ -150,9 +142,7 @@ async def test_system_prompt_forbids_outside_knowledge(
 
 
 @pytest.mark.anyio
-async def test_user_query_is_passed_through_verbatim(
-    monkeypatch, stub_embeddings, llm_spy
-):
+async def test_user_query_is_passed_through_verbatim(monkeypatch, stub_embeddings, llm_spy):
     _stub_search(monkeypatch, [_chunk()], 0.8)
 
     await rag.answer("when is my commission credited?")
@@ -172,9 +162,7 @@ async def test_generation_uses_low_temperature(monkeypatch, stub_embeddings, llm
 
 
 @pytest.mark.anyio
-async def test_snippet_is_truncated_for_the_api_response(
-    monkeypatch, stub_embeddings, llm_spy
-):
+async def test_snippet_is_truncated_for_the_api_response(monkeypatch, stub_embeddings, llm_spy):
     _stub_search(monkeypatch, [_chunk(text="x" * 1000)], 0.8)
 
     result = await rag.answer("a question")

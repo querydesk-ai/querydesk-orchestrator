@@ -5,6 +5,7 @@ matching). Nothing else in the app should call httpx against Fireworks
 directly — go through here so there's one place to change if the API
 or model names change.
 """
+
 import httpx
 
 from querydesk.core.config import settings

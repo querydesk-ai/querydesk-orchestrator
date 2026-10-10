@@ -14,9 +14,8 @@ decision layer, slot filling and notifications are Days 3–10.
 ## Setup
 
 ```bash
-python -m venv .venv
-.venv\Scripts\activate           # macOS/Linux: source .venv/bin/activate
-pip install -e ".[dev]"          # src/ layout; dependencies are pinned in pyproject.toml
+# Requires uv: https://docs.astral.sh/uv/
+uv sync                          # creates .venv (Python 3.11) from uv.lock, dev tools included
 
 cp .env.example .env
 # Fill in FIREWORKS_API_KEY and the QDRANT_* values at minimum.
@@ -41,8 +40,8 @@ Commission for a given month is credited on the 7th of the following month...
 Then:
 
 ```bash
-python scripts/ingest.py            # chunks, embeds (dense + BM25), upserts to Qdrant
-python scripts/ingest.py --recreate # only when the collection schema changes
+uv run scripts/ingest.py            # chunks, embeds (dense + BM25), upserts to Qdrant
+uv run scripts/ingest.py --recreate # only when the collection schema changes
 ```
 
 Re-running is safe: point ids are deterministic, so chunks update in place instead of duplicating.
@@ -50,7 +49,7 @@ Re-running is safe: point ids are deterministic, so chunks update in place inste
 ## Run
 
 ```bash
-uvicorn querydesk.main:app --reload
+uv run uvicorn querydesk.main:app --reload
 ```
 
 ```bash
@@ -74,17 +73,18 @@ The suite is fully offline — Fireworks is mocked with `respx`, Qdrant is monke
 needs no API key and no running services.
 
 ```bash
-pytest -q
-pytest tests/unit/test_rag.py -q
-pytest tests/unit/test_rag.py::test_no_hits_escalates_without_calling_the_llm -q
-ruff check .
+uv run pytest -q
+uv run pytest tests/unit/test_rag.py -q
+uv run pytest tests/unit/test_rag.py::test_no_hits_escalates_without_calling_the_llm -q
+uv run ruff check .
+uv run ruff format .
 ```
 
 Check that the backing services are reachable (separate from the app, so a failure points at
 config rather than application code):
 
 ```bash
-python scripts/check_services.py
+uv run scripts/check_services.py
 ```
 
 ## Layout

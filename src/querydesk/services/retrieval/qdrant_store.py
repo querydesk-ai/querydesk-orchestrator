@@ -9,6 +9,7 @@ Two collections:
 Everything is async: the /chat path is async and the sync client would block
 the event loop while waiting on network I/O.
 """
+
 import uuid
 from dataclasses import dataclass
 
@@ -100,9 +101,7 @@ async def ensure_collections(recreate: bool = False) -> None:
                     # inverse-document-frequency term weighting. Without it
                     # search still "works" but scores are meaningfully worse,
                     # and the failure is entirely silent.
-                    SPARSE_VECTOR: models.SparseVectorParams(
-                        modifier=models.Modifier.IDF
-                    )
+                    SPARSE_VECTOR: models.SparseVectorParams(modifier=models.Modifier.IDF)
                 },
             )
 
@@ -187,12 +186,8 @@ async def hybrid_search(
 
     fused_request = models.QueryRequest(
         prefetch=[
-            models.Prefetch(
-                query=dense_vector, using=DENSE_VECTOR, limit=prefetch_limit
-            ),
-            models.Prefetch(
-                query=sparse_vector, using=SPARSE_VECTOR, limit=prefetch_limit
-            ),
+            models.Prefetch(query=dense_vector, using=DENSE_VECTOR, limit=prefetch_limit),
+            models.Prefetch(query=sparse_vector, using=SPARSE_VECTOR, limit=prefetch_limit),
         ],
         query=models.FusionQuery(fusion=models.Fusion.RRF),
         limit=limit,

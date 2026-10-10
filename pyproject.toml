@@ -23,7 +23,8 @@ dependencies = [
   "asyncpg==0.31.0",
 ]
 
-[project.optional-dependencies]
+# Dev tooling. `uv sync` installs this group by default; uv.lock pins the full tree.
+[dependency-groups]
 dev = [
   "pytest==9.1.1",
   # respx mocks the Fireworks HTTP API so the suite runs with no credentials.
@@ -50,3 +51,6 @@ src = ["src", "tests", "scripts"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "W"]
+
+[tool.ruff.format]
+quote-style = "double"
