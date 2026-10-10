@@ -1,0 +1,60 @@
+{"id": "act-01", "query": "my account is locked and the portal says PWD-1403, pls unlock it", "kind": "action", "expected_decision": "RAISE_SR", "category_id": "it_password_reset", "fields_present": true}
+{"id": "act-02", "query": "need a password reset, the reset portal gives PWD-1401 no recovery method enrolled", "kind": "action", "expected_decision": "RAISE_SR", "category_id": "it_password_reset", "fields_present": true}
+{"id": "act-03", "query": "can someone reset my password? the self service portal is down", "kind": "action", "expected_decision": "RAISE_SR", "category_id": "it_password_reset", "fields_present": true}
+{"id": "act-04", "query": "keep UAT-2 up till 11 PM tonight for release testing of the claims module", "kind": "action", "expected_decision": "RAISE_SR", "category_id": "it_uat_extension", "fields_present": true}
+{"id": "act-05", "query": "please extend UAT-5 to midnight, our CRM regression run won't finish before 9", "kind": "action", "expected_decision": "RAISE_SR", "category_id": "it_uat_extension", "fields_present": true}
+{"id": "act-06", "query": "need uat extended tonight", "kind": "action", "expected_decision": "COLLECT_DETAILS", "category_id": "it_uat_extension", "fields_present": false}
+{"id": "act-07", "query": "add one more node to pas-web in production, CPU has been above 80% all week", "kind": "action", "expected_decision": "RAISE_SR", "category_id": "it_add_server_cluster", "fields_present": true}
+{"id": "act-08", "query": "we need another server in the doc-render cluster in UAT for the March renewal load test", "kind": "action", "expected_decision": "RAISE_SR", "category_id": "it_add_server_cluster", "fields_present": true}
+{"id": "act-09", "query": "can you add a server to our cluster", "kind": "action", "expected_decision": "COLLECT_DETAILS", "category_id": "it_add_server_cluster", "fields_present": false}
+{"id": "act-10", "query": "restart the claims app in UAT, it's hung", "kind": "action", "expected_decision": "RAISE_SR", "category_id": "it_application_restart", "fields_present": true}
+{"id": "act-11", "query": "please bounce agent-portal in prod, the thread pool is stuck", "kind": "action", "expected_decision": "RAISE_SR", "category_id": "it_application_restart", "fields_present": true}
+{"id": "act-12", "query": "app is frozen pls restart", "kind": "action", "expected_decision": "COLLECT_DETAILS", "category_id": "it_application_restart", "fields_present": false}
+{"id": "act-13", "query": "allow TCP 8443 inbound from 203.0.113.0/24 to pas-web in UAT so the vendor can run integration tests", "kind": "action", "expected_decision": "RAISE_SR", "category_id": "it_dns_firewall_change", "fields_present": true}
+{"id": "act-14", "query": "add a CNAME quotes-api.uat.internal pointing to pas-web-lb in UAT for the new quote service", "kind": "action", "expected_decision": "RAISE_SR", "category_id": "it_dns_firewall_change", "fields_present": true}
+{"id": "act-15", "query": "open the firewall for the vendor", "kind": "action", "expected_decision": "COLLECT_DETAILS", "category_id": "it_dns_firewall_change", "fields_present": false}
+{"id": "act-16", "query": "proposal PR-20931 has been under review for 6 days and still not issued, please check", "kind": "action", "expected_decision": "RAISE_SR", "category_id": "ops_policy_issuance_delay", "fields_present": true}
+{"id": "act-17", "query": "customer's term policy P-778120 was approved last week but still hasn't been issued", "kind": "action", "expected_decision": "RAISE_SR", "category_id": "ops_policy_issuance_delay", "fields_present": true}
+{"id": "act-18", "query": "my customer's policy hasn't been issued, it's been ages", "kind": "action", "expected_decision": "COLLECT_DETAILS", "category_id": "ops_policy_issuance_delay", "fields_present": false}
+{"id": "act-19", "query": "raise a commission dispute for agent AG10234, the August statement applied 10% instead of 25% on a term policy", "kind": "action", "expected_decision": "RAISE_SR", "category_id": "ops_commission_payout_query", "fields_present": true}
+{"id": "act-20", "query": "agent code AG55102, a policy issued on 5 September is missing from my September commission statement", "kind": "action", "expected_decision": "RAISE_SR", "category_id": "ops_commission_payout_query", "fields_present": true}
+{"id": "act-21", "query": "i want to dispute my commission", "kind": "action", "expected_decision": "COLLECT_DETAILS", "category_id": "ops_commission_payout_query", "fields_present": false}
+{"id": "act-22", "query": "onboard new agent Priya Sharma, licence IRDAI-AG-1234567, region West", "kind": "action", "expected_decision": "RAISE_SR", "category_id": "ops_agent_onboarding_licensing", "fields_present": true}
+{"id": "act-23", "query": "please register Rahul Mehta as an agent, licence number IRDAI-AG-7654321, north region", "kind": "action", "expected_decision": "RAISE_SR", "category_id": "ops_agent_onboarding_licensing", "fields_present": true}
+{"id": "act-24", "query": "need to onboard a new agent", "kind": "action", "expected_decision": "COLLECT_DETAILS", "category_id": "ops_agent_onboarding_licensing", "fields_present": false}
+{"id": "act-25", "query": "change the nominee on policy 40012345 to Anita Rao", "kind": "action", "expected_decision": "RAISE_SR", "category_id": "ops_policy_endorsement", "fields_present": true}
+{"id": "act-26", "query": "correct the date of birth on policy 50098761 to 12-03-1985", "kind": "action", "expected_decision": "RAISE_SR", "category_id": "ops_policy_endorsement", "fields_present": true}
+{"id": "act-27", "query": "update the customer's details on their policy", "kind": "action", "expected_decision": "COLLECT_DETAILS", "category_id": "ops_policy_endorsement", "fields_present": false}
+{"id": "act-28", "query": "agent AG20981 has had no leads at all since Monday, territory mapping looks correct", "kind": "action", "expected_decision": "RAISE_SR", "category_id": "ops_crm_lead_access", "fields_present": true}
+{"id": "act-29", "query": "AG33017 is getting leads for the wrong territory in the CRM", "kind": "action", "expected_decision": "RAISE_SR", "category_id": "ops_crm_lead_access", "fields_present": true}
+{"id": "act-30", "query": "I can't see my leads", "kind": "action", "expected_decision": "COLLECT_DETAILS", "category_id": "ops_crm_lead_access", "fields_present": false}
+{"id": "inf-01", "query": "how long does an account lockout last?", "kind": "informational", "expected_decision": "ANSWER", "category_id": "it_password_reset", "expected_source": "it-password-reset.md"}
+{"id": "inf-02", "query": "what does PWD-1407 mean?", "kind": "informational", "expected_decision": "ANSWER", "category_id": "it_password_reset", "expected_source": "it-password-reset.md", "lexical": true}
+{"id": "inf-03", "query": "what time does UAT shut down every night?", "kind": "informational", "expected_decision": "ANSWER", "category_id": "it_uat_extension", "expected_source": "it-uat-extension.md"}
+{"id": "inf-04", "query": "is my UAT data lost when the environment shuts down?", "kind": "informational", "expected_decision": "ANSWER", "category_id": "it_uat_extension", "expected_source": "it-uat-extension.md"}
+{"id": "inf-05", "query": "what's the max number of nodes in the doc-render cluster?", "kind": "informational", "expected_decision": "ANSWER", "category_id": "it_add_server_cluster", "expected_source": "it-add-server-cluster.md"}
+{"id": "inf-06", "query": "how long does it take to add a node in production?", "kind": "informational", "expected_decision": "ANSWER", "category_id": "it_add_server_cluster", "expected_source": "it-add-server-cluster.md"}
+{"id": "inf-07", "query": "does a rolling restart cause downtime?", "kind": "informational", "expected_decision": "ANSWER", "category_id": "it_application_restart", "expected_source": "it-application-restart.md"}
+{"id": "inf-08", "query": "do I need approval to restart something in prod?", "kind": "informational", "expected_decision": "ANSWER", "category_id": "it_application_restart", "expected_source": "it-application-restart.md"}
+{"id": "inf-09", "query": "how long does an internal DNS change take to show up?", "kind": "informational", "expected_decision": "ANSWER", "category_id": "it_dns_firewall_change", "expected_source": "it-dns-firewall-change.md"}
+{"id": "inf-10", "query": "my firewall request failed with FW-2204, what does that mean?", "kind": "informational", "expected_decision": "ANSWER", "category_id": "it_dns_firewall_change", "expected_source": "it-dns-firewall-change.md", "lexical": true}
+{"id": "inf-11", "query": "how long does a private car motor policy take to issue?", "kind": "informational", "expected_decision": "ANSWER", "category_id": "ops_policy_issuance_delay", "expected_source": "ops-policy-issuance-delay.md"}
+{"id": "inf-12", "query": "whats the difference between payment received and payment realised?", "kind": "informational", "expected_decision": "ANSWER", "category_id": "ops_policy_issuance_delay", "expected_source": "ops-policy-issuance-delay.md"}
+{"id": "inf-13", "query": "when is my commission credited?", "kind": "informational", "expected_decision": "ANSWER", "category_id": "ops_commission_payout_query", "expected_source": "ops-commission-payout.md"}
+{"id": "inf-14", "query": "what TDS rate is deducted from commission if PAN isn't on record?", "kind": "informational", "expected_decision": "ANSWER", "category_id": "ops_commission_payout_query", "expected_source": "ops-commission-payout.md"}
+{"id": "inf-15", "query": "how many hours of training does an agent need to get licensed?", "kind": "informational", "expected_decision": "ANSWER", "category_id": "ops_agent_onboarding_licensing", "expected_source": "ops-agent-onboarding-licensing.md"}
+{"id": "inf-16", "query": "how long after onboarding does a new agent get their agent code?", "kind": "informational", "expected_decision": "ANSWER", "category_id": "ops_agent_onboarding_licensing", "expected_source": "ops-agent-onboarding-licensing.md"}
+{"id": "inf-17", "query": "can the life assured on a policy be changed?", "kind": "informational", "expected_decision": "ANSWER", "category_id": "ops_policy_endorsement", "expected_source": "ops-policy-endorsement.md"}
+{"id": "inf-18", "query": "how long does a nominee change take to process?", "kind": "informational", "expected_decision": "ANSWER", "category_id": "ops_policy_endorsement", "expected_source": "ops-policy-endorsement.md"}
+{"id": "inf-19", "query": "what does CRM-5503 mean?", "kind": "informational", "expected_decision": "ANSWER", "category_id": "ops_crm_lead_access", "expected_source": "ops-crm-lead-access.md", "lexical": true}
+{"id": "inf-20", "query": "why do my leads disappear after a few days?", "kind": "informational", "expected_decision": "ANSWER", "category_id": "ops_crm_lead_access", "expected_source": "ops-crm-lead-access.md"}
+{"id": "oos-01", "query": "how many casual leaves do I get this year?", "kind": "out_of_scope", "expected_decision": "ESCALATE"}
+{"id": "oos-02", "query": "my laptop keeps restarting by itself, can you fix it", "kind": "out_of_scope", "expected_decision": "ESCALATE"}
+{"id": "oos-03", "query": "when is salary credited this month?", "kind": "out_of_scope", "expected_decision": "ESCALATE"}
+{"id": "oos-04", "query": "what is the capital of Peru?", "kind": "out_of_scope", "expected_decision": "ESCALATE"}
+{"id": "oos-05", "query": "book a meeting room for tomorrow at 3pm", "kind": "out_of_scope", "expected_decision": "ESCALATE"}
+{"id": "oos-06", "query": "outlook isn't syncing my emails", "kind": "out_of_scope", "expected_decision": "ESCALATE"}
+{"id": "oos-07", "query": "help", "kind": "out_of_scope", "expected_decision": "ESCALATE"}
+{"id": "oos-08", "query": "it's not working", "kind": "out_of_scope", "expected_decision": "ESCALATE"}
+{"id": "oos-09", "query": "can you give me access to the finance shared drive?", "kind": "out_of_scope", "expected_decision": "ESCALATE"}
+{"id": "oos-10", "query": "order a new monitor for my desk", "kind": "out_of_scope", "expected_decision": "ESCALATE"}

@@ -10,11 +10,10 @@ paths. Keep routing rules out of here.
 
 from dataclasses import dataclass, field
 
-import anyio
-
 from querydesk.models.schemas import ResolutionType, Source
-from querydesk.services.llm.fireworks import chat_completion, embed_query
-from querydesk.services.retrieval import qdrant_store, sparse
+from querydesk.services.llm.fireworks import chat_completion
+from querydesk.services.retrieval import qdrant_store
+from querydesk.services.retrieval.query import QueryVectors, embed_query_vectors
 
 NO_CONTEXT_REPLY = (
     "I don't have information on that in the knowledge base. "
@@ -59,26 +58,19 @@ def _to_sources(hits: list[qdrant_store.RetrievedChunk]) -> list[Source]:
     ]
 
 
-async def answer(query: str) -> RagResult:
+async def answer(query: str, vectors: QueryVectors | None = None) -> RagResult:
     """
     Retrieve and answer. Returns RAG with citations when the knowledge base
     covers the question, MANUAL_ESCALATION when it doesn't.
+
+    Pass `vectors` when the caller has already embedded the query (the router
+    shares the same dense vector), so it isn't embedded twice.
     """
-    # Dense needs the network, sparse needs the CPU — overlap them.
-    async with anyio.create_task_group() as tg:
-        holder: dict = {}
-
-        async def _dense():
-            holder["dense"] = await embed_query(query)
-
-        async def _sparse():
-            holder["sparse"] = await sparse.sparse_embed_query_async(query)
-
-        tg.start_soon(_dense)
-        tg.start_soon(_sparse)
+    if vectors is None:
+        vectors = await embed_query_vectors(query)
 
     hits, top_dense_score = await qdrant_store.hybrid_search(
-        dense_vector=holder["dense"], sparse_vector=holder["sparse"]
+        dense_vector=vectors.dense, sparse_vector=vectors.sparse
     )
 
     if not hits:

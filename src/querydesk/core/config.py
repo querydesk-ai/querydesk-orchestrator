@@ -72,10 +72,24 @@ class Settings(BaseSettings):
 
     # --- Decision thresholds ---------------------------------------------
     # Compared against the top *dense* cosine similarity, never the fused RRF
-    # score (see qdrant_store.hybrid_search). Placeholders until the 60-query
-    # eval set calibrates them on PRD Day 3 — nothing branches on these yet.
-    confidence_high: float = 0.75
-    confidence_mid: float = 0.55
+    # score (see qdrant_store.hybrid_search). Calibrated on the 60-query eval
+    # set — docs/eval-report-v0.md. Re-run the eval before changing them.
+    # high: above every out-of-scope score except one near-miss (0.545).
+    confidence_high: float = 0.56
+    # mid: below every informational question, including error-code lookups
+    # (PWD-1407 scores 0.497) that BM25 retrieves correctly but dense rates low.
+    confidence_mid: float = 0.49
+
+    # --- Semantic router (PRD F3) ----------------------------------------
+    # Cosine similarity of the query to a category description, calibrated in
+    # docs/eval-report-v0.md. Below router_min_score the router isn't
+    # confident -> escalate. Tight: lowest in-scope 0.439, an out-of-scope 0.430.
+    router_min_score: float = 0.43
+    # The LLM tie-break is off: on the eval set similarity alone picked 49/50
+    # categories, the tie-break alone 44/50 at ~1.4s p50. With a 0.00 margin the
+    # top-1 category always stands. Kept behind the flag for re-evaluation.
+    router_tie_margin: float = 0.00
+    router_tie_break_enabled: bool = False
 
     # --- Content ---------------------------------------------------------
     kb_dir: Path = BASE_DIR / "data" / "kb"
