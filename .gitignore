@@ -1,0 +1,22 @@
+# Secrets — never commit. .env holds live Qdrant/Postgres/Redis credentials.
+.env
+.env.*
+!.env.example
+
+# Knowledge-base content is supplied per-deployment, not versioned here.
+data/kb/
+
+# Virtualenvs (this project's lives one level up, at sr-bot-phase0/venv)
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Local tooling
+.vscode/
+.idea/
+*.log
