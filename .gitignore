@@ -20,3 +20,6 @@ __pycache__/
 .vscode/
 .idea/
 *.log
+
+# Eval runs (regenerate with scripts/eval_run.py)
+eval/results/

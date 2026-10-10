@@ -68,7 +68,7 @@ async def route(query: str, dense_vector: list[float]) -> RouterResult:
     if not settings.router_tie_break_enabled:
         return result
 
-    winner = await _tie_break(query, hits)
+    winner = await tie_break(query, hits)
     if winner is not None:
         result.category_id = winner
         result.confident = True
@@ -76,7 +76,7 @@ async def route(query: str, dense_vector: list[float]) -> RouterResult:
     return result
 
 
-async def _tie_break(query: str, candidates: list[CategoryHit]) -> str | None:
+async def tie_break(query: str, candidates: list[CategoryHit]) -> str | None:
     """
     Ask the LLM to choose between the top candidates. Returns a candidate id,
     or None — on an unrecognised reply or a Fireworks failure — so the router
