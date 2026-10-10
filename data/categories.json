@@ -1,0 +1,105 @@
+{
+  "version": "1.1",
+  "_comment": "Single source of truth for the 10 v1 categories, shared with the ticketing service via querydesk-docs. Never hardcode a category id, required field or approval rule anywhere in the code. 'description' is the text embedded into the Qdrant `categories` collection for the semantic router, so it should read like the things users actually say, not like a schema label.",
+  "approval_values": ["none", "always", "conditional"],
+  "categories": [
+    {
+      "id": "it_password_reset",
+      "name": "Password reset",
+      "domain": "IT",
+      "approval": "none",
+      "required_fields": [],
+      "default_path": "answer",
+      "default_path_note": "Answer with the self-service portal; raise an SR only if the portal fails.",
+      "description": "Resetting or unlocking a forgotten account password. Users cannot sign in, their account is locked out after failed attempts, their password expired, or the self-service password portal is rejecting them and they need IT to reset the credential manually."
+    },
+    {
+      "id": "it_uat_extension",
+      "name": "UAT extension past 9 PM",
+      "domain": "IT",
+      "approval": "always",
+      "approval_note": "Time-bound: infra lead approval, auto-reverts when the window ends.",
+      "required_fields": ["environment", "extend_until", "reason"],
+      "default_path": "sr",
+      "default_path_note": "SR; metadata.extend_until drives revert_at and the auto-revert scheduler.",
+      "description": "Keeping a UAT or test environment running past the normal 9 PM shutdown. Requests to extend an environment's uptime for late release testing, regression runs or a deployment window, naming which environment and how late it should stay up."
+    },
+    {
+      "id": "it_add_server_cluster",
+      "name": "Add server to cluster",
+      "domain": "IT",
+      "approval": "always",
+      "required_fields": ["cluster", "environment", "reason"],
+      "default_path": "sr",
+      "description": "Adding a new server or node into an existing application cluster to increase capacity. Scaling out a cluster, provisioning an additional instance, or joining a replacement host to a load-balanced pool."
+    },
+    {
+      "id": "it_application_restart",
+      "name": "Application restart",
+      "domain": "IT",
+      "approval": "conditional",
+      "approval_note": "No approval by default; a config rule can force approval for production.",
+      "required_fields": ["application", "environment"],
+      "default_path": "sr",
+      "description": "Restarting or bouncing an application or service. The app is hung, unresponsive, leaking memory, serving errors, or needs a restart to pick up a configuration change. Names which application and which environment."
+    },
+    {
+      "id": "it_dns_firewall_change",
+      "name": "DNS / firewall change",
+      "domain": "IT",
+      "approval": "always",
+      "required_fields": ["change_type", "target", "environment", "reason"],
+      "default_path": "sr",
+      "description": "Changing network configuration: adding or updating a DNS record, opening or closing a firewall port, whitelisting an IP address, or adjusting network routing so a service can be reached."
+    },
+    {
+      "id": "ops_policy_issuance_delay",
+      "name": "Policy issuance delay",
+      "domain": "Ops",
+      "approval": "none",
+      "required_fields": ["policy_or_proposal_number"],
+      "default_path": "answer_then_sr",
+      "default_path_note": "Answer first with the standard timeline; SR if past 3 business days.",
+      "description": "An insurance policy has not been issued yet after the proposal was submitted. The policy document is pending, stuck in underwriting, awaiting issuance, or the customer is chasing their policy certificate."
+    },
+    {
+      "id": "ops_commission_payout_query",
+      "name": "Commission / payout query",
+      "domain": "Ops",
+      "approval": "conditional",
+      "approval_note": "Approval required only for a disputed amount.",
+      "required_fields": ["agent_code", "month"],
+      "default_path": "answer_then_sr",
+      "default_path_note": "Answer a status check from the payout schedule; raise an SR for a dispute.",
+      "description": "Questions about agent commission or payout: when commission is credited, the payout schedule and cut-off dates, a missing or delayed payment, or a disagreement about the commission amount calculated for a given month."
+    },
+    {
+      "id": "ops_agent_onboarding_licensing",
+      "name": "Agent onboarding / licensing",
+      "domain": "Ops",
+      "approval": "always",
+      "required_fields": ["agent_name", "license_number", "region"],
+      "default_path": "sr",
+      "description": "Onboarding a new insurance agent or seller, or handling their licensing: registering an agent code, submitting IRDAI licence details, completing onboarding paperwork, or renewing an expiring agent licence."
+    },
+    {
+      "id": "ops_policy_endorsement",
+      "name": "Policy endorsement",
+      "domain": "Ops",
+      "approval": "always",
+      "required_fields": ["policy_number", "field", "new_value"],
+      "default_path": "sr",
+      "description": "Amending details on an already issued policy: correcting a name, date of birth, address, nominee or bank details, or changing the sum assured. Any change to a policy field after issuance, which is processed as an endorsement."
+    },
+    {
+      "id": "ops_crm_lead_access",
+      "name": "CRM lead access",
+      "domain": "Ops",
+      "approval": "none",
+      "required_fields": ["agent_code", "issue"],
+      "default_path": "answer_then_sr",
+      "default_path_note": "Answer first; SR only if the territory mapping is already correct.",
+      "description": "An agent cannot see or access leads in the CRM. Leads are missing from their dashboard, assigned to the wrong agent, not visible for their territory, or CRM permissions are blocking the lead queue."
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # No secrets configured: the suite mocks Fireworks with respx and
+      # monkeypatches Qdrant, so it must pass with no credentials at all.
+      # If a test ever needs a key, that test belongs outside tests/.
+      - name: Run tests
+        run: pytest -q
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks scans history, not just the tip commit.
+          fetch-depth: 0
+
+      - name: Scan for leaked secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
