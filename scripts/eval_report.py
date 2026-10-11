@@ -28,7 +28,7 @@ RESULTS_DIR = BASE_DIR / "eval" / "results"
 DEFAULT_OUT = BASE_DIR / "docs" / "eval-report-latest.md"
 
 
-def main(results_path: Path | None, out: Path) -> None:
+def main(results_path: Path | None, out: Path, title: str) -> None:
     if out.exists() and out.name.startswith("eval-report-v"):
         sys.exit(f"{out.name} is a published report with hand-written decisions — use a new --out.")
 
@@ -45,7 +45,7 @@ def main(results_path: Path | None, out: Path) -> None:
         for k in ("confidence_high", "confidence_mid", "router_min_score", "router_tie_margin")
     }
 
-    out.write_text(render_markdown(analysis, results_path.name, current), encoding="utf-8")
+    out.write_text(render_markdown(analysis, results_path.name, current, title), encoding="utf-8")
 
     print("Proposed thresholds (current -> proposed):")
     for k, v in analysis.proposals.items():
@@ -56,6 +56,12 @@ def main(results_path: Path | None, out: Path) -> None:
         f"with tie-break {sr['with_tie_break']:.0%}"
     )
     print(f"Informational source hit@k: {analysis.retrieval['hit_at_k']:.0%}")
+    if analysis.decisions:
+        d = analysis.decisions
+        print(
+            f"Routing accuracy: {d['lenient']:.0%} (strict {d['strict']:.0%}); "
+            f"action requests answered with an article: {d['action_answered']:.0%}"
+        )
     print(f"\nWrote {out}")
 
 
@@ -63,5 +69,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("results", nargs="?", type=Path, help="results .jsonl (default: latest)")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="report path")
+    parser.add_argument("--title", default="Eval report", help="report heading")
     args = parser.parse_args()
-    main(args.results, args.out)
+    main(args.results, args.out, args.title)
