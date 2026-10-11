@@ -7,6 +7,22 @@ Owner key: **T** = Tanmay (orchestrator) · **P** = Partner (ticketing + deploy)
 
 Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
 
+## Where we are — 2026-10-11
+
+- **Orchestrator lane: Days 1–4 done.** Days 1–3 merged (PR #1); Day 4 on `day4-decision-layer`.
+  Eval v1 (83 rows): **routing accuracy 96%** (target ≥ 90%), **action requests answered with an
+  article 0%** (target ≤ 5%), informational citations 30/30 — `docs/eval-report-v1-day4.md`.
+- **Day 4 code-review fixes (2026-10-11):** 502 mapping, same-day reopen keyed off the closed SR's
+  number, tighter status/action signals, rule 4 narrowed to actions, decision logged on failure.
+  Eval v2 (87 rows): **routing accuracy 97%**, action answered 0%, same 5 known misses —
+  `docs/eval-report-v2.md`.
+- **Checkpoint 1 met against a stand-in.** A `/chat` message creates an SR and resending it returns
+  the same SR, verified live against `tests/fakes/fake_ticketing.py` (PRD v1.1 contract). The real
+  check waits on the partner's service: `querydesk-ticketing` and `querydesk-docs` are still empty.
+- **Next up: Day 5** — Jev (starts with your Playground session) and the latency decision.
+- **Plan for Days 4–5:** [plan-days-4-5.md](plan-days-4-5.md) — the steps, the decisions behind
+  them, and each day's definition of done.
+
 ---
 
 ## Day 0 — prerequisites (blocking)
@@ -20,9 +36,13 @@ These gate everything below. Nothing in Day 1 is verifiable until the first two 
 - [x] **T** Write the 11 knowledge-base articles into `data/kb/*.md` — one per category plus one
   general IT-policy doc. Each needs YAML front matter: `title`, `category_id`, `source_url`.
   *Blocks: ingestion has nothing to index. This is content work, not code.*
-- [ ] **B** Create the GitHub org and the three repos (`querydesk-orchestrator`,
-  `querydesk-ticketing`, `querydesk-docs`); protect `main` on each.
+- [x] **B** Create the GitHub org (`querydesk-ai`) and the three repos (`querydesk-orchestrator`,
+  `querydesk-ticketing`, `querydesk-docs`). *All three exist; ticketing and docs are still empty.*
+- [!] **B** Protect `main` on each repo. *Blocked: GitHub returns 403 — branch protection on
+  private repos needs a paid plan (Team/Pro) or public repos. Until then, the PR-and-review rule is
+  enforced by agreement only.*
 - [ ] **B** Approve API contract **v1.1** in `querydesk-docs` before either service builds on it.
+  **Now the critical path** — the Day 4 ticketing client and Checkpoint 1 depend on it.
   The four additions: `Idempotency-Key` on `POST /sr`; `updated_since` filter on `GET /sr`;
   `metadata.extend_until` → `revert_at` for `it_uat_extension`; signed
   `POST {orchestrator}/webhooks/sr-status` webhook (HMAC-SHA256, `X-Signature`, 5 retries).
@@ -101,43 +121,154 @@ These gate everything below. Nothing in Day 1 is verifiable until the first two 
 
 ---
 
-## Days 3–10 — not yet planned in detail
+## Day 3 — router + eval set
 
-Headline items only, so the board is complete. Each needs its own planning pass; Days 4–5 in
-particular depend on facts the PRD says are unknown until the Day 4 Jev Playground session.
+**Done when:** eval report v0 ✅ (T); every ticketing transition tested (P — open).
 
-### Day 3 — router + eval set
-*Done when: eval report v0; every ticketing transition tested.*
+- [x] **T** Embed each message once: `services/retrieval/query.py::embed_query_vectors()`; the
+  vectors are shared by retrieval and the router (`rag.answer(vectors=...)`), saving a Fireworks
+  round trip per message.
 - [x] **T** Semantic router over the `categories` collection; LLM tie-break only when the top two
   scores are close. *Built (`services/routing/router.py`); the tie-break is disabled after the eval —
-  similarity alone 49/50, tie-break 44/50 at ~1.4 s.*
+  similarity alone 49/50, tie-break 44/50 at ~1.4 s (it answers `none` for informational
+  questions because its prompt frames categories as requests).*
 - [x] **T** Write the 60-query labelled eval set (30 action requests, 20 informational, 10
   out-of-scope/ambiguous). *In `eval/eval_set.jsonl` for now; moves to `querydesk-docs` once it
   exists.*
 - [x] **T** Calibration script that sets `confidence_high` / `confidence_mid` from the eval set.
   *`scripts/eval_run.py` + `scripts/eval_report.py` → `docs/eval-report-v0.md`. Calibrated:
   high 0.56, mid 0.49, router_min 0.43. SR-bound category accuracy 100% (target ≥ 90%).*
-- [!] **T** **Risk:** dense embedding is 1.6–2.2 s per query, so the answer path can't meet
-  p95 < 3 s. Decide before Day 8 (local embedding model, caching, or a faster hosted model).
-- [ ] **P** Status state machine, `PATCH /sr/{id}/status`, 409 on invalid moves, status history.
+- [x] **T** CI fixed: `gitleaks-action` needs a paid licence for org repos, so the secrets job had
+  failed on every run; it now runs the MIT gitleaks CLI. Merged in PR #1.
+- [ ] **P** Status state machine, `PATCH /sr/{id}/status`, 409 on invalid moves, status history;
+  a unit test per transition.
 
-### Day 4 — decision layer · **Checkpoint 1**
-*Done when: the orchestrator creates a real SR in the ticketing service.*
-- [ ] **T** Decision layer interface + **rule engine first** (6 rules, first match wins).
-- [ ] **T** Ticketing service client with idempotency key.
-- [ ] **T** Try Jev in the Playground and confirm its real request shape.
-- [ ] **P** Idempotency key, Testcontainers integration tests, Dockerfile.
+### Day 3 follow-ups (carry forward)
 
-### Day 5 — Jev
-*Done when: routing accuracy reported for both engines.*
-- [ ] **T** Jev implementation behind the existing interface; run both engines on the eval set; the
-  higher-accuracy one becomes the default.
+- [!] **T** **Latency risk:** dense embedding is 1.6–2.2 s per query, so the answer path can't meet
+  p95 < 3 s (generation adds ~1.2 s). Decide before Day 8: a local CPU embedding model via fastembed
+  (needs `--recreate` and a re-calibration), caching repeated queries, or a faster hosted model.
+- [x] **T** Grow the eval set with near-miss rows before the Day 5 re-calibration —
+  `router_min_score` 0.43 sits between an in-scope 0.439 and an out-of-scope 0.430, which is too
+  tight to trust on 60 rows. *Done: 83 rows; `router_min_score` re-calibrated to 0.46 — every
+  action request clears it.*
+- [ ] **B** Move `eval/eval_set.jsonl` to `querydesk-docs` once that repo has its first commit.
+
+---
+
+## Day 4 — decision layer · **Checkpoint 1**
+
+**Done when:** the orchestrator creates a real SR in the ticketing service.
+**Status:** all **T** items done on `day4-decision-layer`, verified live against the stand-in
+ticketing service (`tests/fakes/fake_ticketing.py`). The real checkpoint still waits on the
+partner's `POST /sr` and contract v1.1.
+
+The failure that matters most is answering an action request with an article. Eval v0 showed that
+**83% of action requests clear `confidence_high`**, so the decision layer must not answer on score
+alone — it needs an explicit "is this an action?" signal (rule 2 says *not an action request* **and**
+score ≥ high).
+
+### Plumbing
+
+- [x] **T** Split `services/rag.py` into `retrieve(query, vectors)` → hits + `top_dense_score` and
+  `generate(query, hits)` → reply. The decision needs the score *before* deciding whether to
+  generate; `answer()` stays as a thin wrapper so existing tests keep passing.
+- [x] **T** Add `AUTO_SR` to `ResolutionType` — the decision layer can now emit it.
+
+### Decision signals
+
+- [x] **T** **Action detection** (`services/decision/signals.py`): is this message a request to *do*
+  something, or a question? Start rule-based (imperative verbs, "please / pls / can you / need to",
+  request verbs drawn from category descriptions), measured on the eval set. Target: action requests
+  answered with an article ≤ 5%. Jev replaces this signal on Day 5 if it scores better.
+- [x] **T** **Status-question detection** for rule 1 ("status of my requests", "what happened to my
+  SR"). Only the routing here; the actual `STATUS_LOOKUP` answer is Day 8.
+- [x] **T** **Required-field extraction** (`services/decision/extraction.py`): one LLM call returning
+  JSON for the category's `required_fields` read from `categories.json` (invariant #3 — never
+  hardcoded), plus the list still missing. Decides RAISE_SR vs COLLECT_DETAILS. Must not invent
+  values: a field absent from the message is missing, never guessed.
+
+### Rule engine
+
+- [x] **T** `DecisionEngine` interface (`services/decision/engine.py`): `async decide(DecisionInput)
+  -> DecisionOutput` with `decision`, `resolution_type`, `category_id`, `fields`, `missing_fields`,
+  `requires_approval`, `engine`. Selected by a `decision_engine` setting (`rules` now, `jev` Day 5).
+- [x] **T** `RuleEngine` — the PRD's six rules, first match wins:
+  1. asks about an existing request → `STATUS_LOOKUP`
+  2. not an action, score ≥ `confidence_high` → `ANSWER` (`RAG`)
+  3. not an action, score ≥ `confidence_mid` → `ANSWER_WITH_DISCLAIMER` + offer to raise an SR
+  4. action **and** router confident → `RAISE_SR` (`AUTO_SR`) if fields complete,
+     else `COLLECT_DETAILS` *(narrower than the PRD's "or score < mid" — a question never opens
+     an SR; see plan-days-4-5.md)*
+  5. router not confident / outside the 10 categories / unanswered question → `ESCALATE`
+     (`MANUAL_ESCALATION`)
+  6. config rules apply last and can only **tighten**: force approval (e.g. prod restarts for a
+     `conditional` category) or force escalation of a category's SRs.
+- [x] **T** Unit tests: one per rule, the first-match ordering, and that rule 6 can tighten but never
+  loosen. All offline.
+
+### Ticketing client
+
+- [x] **T** `services/ticketing/client.py` — the only module that talks to the ticketing service:
+  `create_sr()` (`POST /sr` with an `Idempotency-Key` header) and `get_sr()`. Raises
+  `TicketingError(UpstreamError)`, so `/chat` maps it to 502 with no router change.
+  `ticketing_base_url` in config.
+- [x] **T** Idempotency key derived deterministically from the request (user, category, normalised
+  fields), so a retried or double-sent message returns the original SR instead of a duplicate.
+- [x] **T** `respx` tests: request shape, idempotency header, 200-on-repeat handling, error mapping.
+  Field names follow the PRD until the OpenAPI file lands in `querydesk-docs` — **re-check then.**
+
+### Wiring and measurement
+
+- [x] **T** Wire into `POST /chat`: embed once → retrieve + route (concurrently) → decide → generate
+  (ANSWER paths) / create SR (RAISE_SR) / ask for the missing fields (COLLECT_DETAILS, single turn —
+  Redis state is Day 6) / escalate. Add `decision` (and `sr_id` when one is created) to
+  `ChatResponse`.
+- [x] **T** Log every decision (F10) as one structured log line with inputs, outputs, engine and
+  `latency_ms`; it moves into the `decision_logs` table with Postgres on Day 6.
+- [x] **T** Extend `eval_run.py` / `eval_report.py` with **routing accuracy** (decision matches the
+  label, target ≥ 90%) and **action requests answered with an article** (target ≤ 5%). This becomes
+  the baseline the Day 5 Jev engine has to beat. *Result: 96% and 0% — `docs/eval-report-v1-day4.md`.*
+- [x] **T** Decision layer latency under 500 ms on the eval run, excluding the LLM extraction call
+  (report it separately). *Result: ~0 ms; extraction p50 2.0 s / p95 3.6 s on the SR path.*
+
+### Jev and the checkpoint
+
+- [ ] **T** *(moved to Day 5)* Jev Playground session: confirm the real request/response shape for the three questions
+  (action? existing request? does the top article answer it — probability) and write it down in
+  `docs/`. `TYPESAFE_API_KEY` is first used here.
+- [ ] **P** Idempotency key on `POST /sr`, Testcontainers integration tests, Dockerfile.
+- [~] **B** **Checkpoint 1:** a `/chat` message ("restart the claims app in UAT, it's hung") creates
+  a real SR in the ticketing service, and resending it returns the same SR. *Verified live against
+  the stand-in (SR 1001 created, resend returned 1001); repeat against the real service.*
+
+---
+
+## Days 5–10 — not yet planned in detail
+
+Headline items only, so the board is complete. Each gets its own planning pass when its turn comes.
+
+### Day 5 — Jev, and the latency decision
+*Done when: routing accuracy reported for both engines; a written recommendation on embedding
+latency.* Detail in [plan-days-4-5.md](plan-days-4-5.md#day-5--jev-and-the-latency-decision).
+- [ ] **T** Jev Playground session (needs your TypeSafe account): confirm the real request/response
+  for the three questions; record it in `docs/jev-notes.md`. *Everything below waits on this.*
+- [ ] **T** `services/llm/jev.py` — the only module that talks to TypeSafe; `JevError(UpstreamError)`.
+- [ ] **T** `JevEngine` behind the Day 4 `DecisionEngine` interface; falls back to `RuleEngine` on a
+  Jev error or a response slower than ~400 ms (decision budget < 500 ms).
+- [ ] **T** `eval_run.py --engine both`; report both engines side by side (routing accuracy, action
+  answered rate, latency, disagreements). The higher routing accuracy becomes the default.
+- [ ] **T** Latency spike: a local fastembed dense model vs `qwen3-embedding-8b` on the eval set
+  (speed, hit@1, router accuracy); written recommendation before Day 8.
 - [ ] **P** Webhook outbox with HMAC signing and backoff retry.
 
 ### Day 6 — slot filling
 *Done when: a UAT extension SR raised from one message plus one follow-up.*
 - [ ] **T** Redis slot-filling state (`conversation:{user_id}`, 30-min TTL, max 2 follow-up turns);
   duplicate check (no second open SR per user + category); `sr_requests` table.
+- [ ] **T** Record every `ESCALATE` in `sr_requests` (`MANUAL_ESCALATION`) so a person can pick it
+  up, then change `ESCALATE_REPLY` back to "flagged for the service desk". Until then the reply
+  tells the user to contact the desk directly — nothing is persisted.
 - [ ] **P** UAT auto-revert scheduler; approver and note on status changes.
 
 ### Day 7 — notifications · **Checkpoint 2**

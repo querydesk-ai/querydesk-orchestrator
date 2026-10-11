@@ -1,0 +1,16 @@
+{
+  "_comment": "PRD decision rule 6, owned by the orchestrator (unlike categories.json, which is shared with ticketing). These rules apply last and can only TIGHTEN a decision: switch approval on, or force an escalation. They can never switch approval off or turn an escalation into an SR. Category ids and fields are validated against categories.json at load.",
+  "force_approval": [
+    {
+      "category_id": "it_application_restart",
+      "field": "environment",
+      "values": ["prod", "production", "prd", "live"],
+      "note": "Production restarts need service-owner approval (KB: Application restart policy)."
+    },
+    {
+      "category_id": "ops_commission_payout_query",
+      "note": "An SR in this category is a dispute, and disputes need approval (KB: Commission payout schedule and disputes)."
+    }
+  ],
+  "force_escalation": []
+}

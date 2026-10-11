@@ -1,10 +1,11 @@
 """
 The labelled eval set (PRD "Evaluation and success metrics").
 
-60 rows: 30 action requests (3 per category), 20 informational questions
-(2 per category) and 10 out-of-scope or ambiguous queries. Each row carries
-the decision the system *should* make, so routing accuracy can be measured
-and thresholds calibrated against it.
+At least the PRD's 60 rows — 30 action requests (3 per category), 20
+informational questions (2 per category) and 10 out-of-scope or ambiguous
+queries — and grown past that. Each row carries the decision the system
+*should* make, so routing accuracy can be measured and thresholds calibrated
+against it.
 """
 
 import json
@@ -14,25 +15,17 @@ from pathlib import Path
 from pydantic import BaseModel, model_validator
 
 from querydesk.core.config import BASE_DIR
+from querydesk.models.schemas import Decision
 
 EVAL_SET_PATH = BASE_DIR / "eval" / "eval_set.jsonl"
+
+__all__ = ["Decision", "EvalRow", "Kind", "load_eval_set"]
 
 
 class Kind(StrEnum):
     ACTION = "action"
     INFORMATIONAL = "informational"
     OUT_OF_SCOPE = "out_of_scope"
-
-
-class Decision(StrEnum):
-    """The decision-layer outcomes (PRD Day 4) an eval row can expect."""
-
-    ANSWER = "ANSWER"
-    ANSWER_WITH_DISCLAIMER = "ANSWER_WITH_DISCLAIMER"
-    COLLECT_DETAILS = "COLLECT_DETAILS"
-    RAISE_SR = "RAISE_SR"
-    ESCALATE = "ESCALATE"
-    STATUS_LOOKUP = "STATUS_LOOKUP"
 
 
 class EvalRow(BaseModel):

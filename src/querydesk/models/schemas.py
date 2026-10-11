@@ -5,15 +5,27 @@ from pydantic import BaseModel, Field
 
 class ResolutionType(StrEnum):
     """
-    How a message was resolved.
+    How a message was resolved (the sr_requests.resolution_type column).
 
-    AUTO_SR is deliberately absent: it arrives with the decision layer on PRD
-    Day 4. Only add a value once the code can actually emit it, so the API
-    contract never advertises an outcome that can't happen.
+    Only add a value once the code can actually emit it, so the API never
+    advertises an outcome that can't happen.
     """
 
     RAG = "RAG"
+    # The SR path: an SR was raised, or details are being collected for one.
+    AUTO_SR = "AUTO_SR"
     MANUAL_ESCALATION = "MANUAL_ESCALATION"
+
+
+class Decision(StrEnum):
+    """The decision layer's outcomes (PRD rules 1–6); one per message."""
+
+    ANSWER = "ANSWER"
+    ANSWER_WITH_DISCLAIMER = "ANSWER_WITH_DISCLAIMER"
+    COLLECT_DETAILS = "COLLECT_DETAILS"
+    RAISE_SR = "RAISE_SR"
+    ESCALATE = "ESCALATE"
+    STATUS_LOOKUP = "STATUS_LOOKUP"
 
 
 class ChatRequest(BaseModel):
@@ -36,7 +48,14 @@ class ChatResponse(BaseModel):
     reply: str
     resolution_type: ResolutionType
     sources: list[Source] = Field(default_factory=list)
-    # Top dense cosine similarity, never a fused RRF score. Surfaced now so
-    # Day 3 threshold calibration is observable from the API, and because it's
-    # a column on the PRD's sr_requests table.
+    # Top dense cosine similarity, never a fused RRF score. Surfaced so
+    # threshold calibration is observable from the API, and because it's a
+    # column on the PRD's sr_requests table.
     retrieval_confidence: float | None = None
+    # What the decision layer chose, and what it acted on. All optional so a
+    # client built against the Day 2 response keeps working.
+    decision: Decision | None = None
+    category_id: str | None = None
+    sr_id: str | None = None
+    missing_fields: list[str] = Field(default_factory=list)
+    requires_approval: bool | None = None

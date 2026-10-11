@@ -41,12 +41,10 @@ jobs:
           # gitleaks scans history, not just the tip commit.
           fetch-depth: 0
 
-      # The gitleaks CLI directly, not gitleaks/gitleaks-action: the action
-      # requires a paid licence for organisation-owned repos, the CLI is MIT.
-      - name: Install gitleaks
-        run: |
-          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz \
-            | tar -xz gitleaks
-
-      - name: Scan for leaked secrets
-        run: ./gitleaks git --redact --verbose .
+      # Org-owned repos need a GITLEAKS_LICENSE secret: a free key from
+      # gitleaks.io, added under Settings → Secrets and variables → Actions.
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}

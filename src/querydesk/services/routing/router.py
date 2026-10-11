@@ -11,12 +11,16 @@ The router reports; it does not decide. Whether a confident category becomes
 an SR, a follow-up question or an answer is the decision layer's job (Day 4).
 """
 
+import logging
 from dataclasses import dataclass, field
 
 from querydesk.core.config import settings
+from querydesk.services import catalog
 from querydesk.services.llm.fireworks import FireworksError, chat_completion
 from querydesk.services.retrieval import qdrant_store
 from querydesk.services.retrieval.qdrant_store import CategoryHit
+
+log = logging.getLogger(__name__)
 
 TIE_BREAK_PROMPT = """You route internal service desk messages to a category.
 
@@ -60,9 +64,7 @@ async def route(query: str, dense_vector: list[float]) -> RouterResult:
 
     margin = result.margin
     if margin is None or margin >= settings.router_tie_margin:
-        result.category_id = hits[0].category_id
-        result.confident = True
-        return result
+        return _choose(result, hits[0].category_id)
 
     # Too close to call on similarity alone.
     if not settings.router_tie_break_enabled:
@@ -70,9 +72,28 @@ async def route(query: str, dense_vector: list[float]) -> RouterResult:
 
     winner = await tie_break(query, hits)
     if winner is not None:
-        result.category_id = winner
-        result.confident = True
         result.tie_broken = True
+        return _choose(result, winner)
+    return result
+
+
+def _choose(result: RouterResult, category_id: str) -> RouterResult:
+    """
+    Commit to a category — unless categories.json no longer defines it.
+
+    The id comes from the Qdrant `categories` collection, which can lag the
+    catalog if ingest.py wasn't re-run after an edit. An unknown id would fail
+    later as a 500; not confident means the message escalates instead.
+    """
+    if category_id not in catalog.all_categories():
+        log.warning(
+            "Router picked %r, which categories.json doesn't define; "
+            "re-run `scripts/ingest.py --recreate`.",
+            category_id,
+        )
+        return result
+    result.category_id = category_id
+    result.confident = True
     return result
 
 

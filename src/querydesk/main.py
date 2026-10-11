@@ -6,8 +6,18 @@ from fastapi import FastAPI
 from querydesk.api.routes import chat, health
 from querydesk.core.errors import VectorStoreError
 from querydesk.services.retrieval.qdrant_store import ensure_collections
+from querydesk.services.ticketing import client as ticketing
 
 logger = logging.getLogger(__name__)
+
+# uvicorn configures only its own loggers; without this the app's INFO lines —
+# including one structured decision per message (querydesk.decision) — vanish.
+_app_log = logging.getLogger("querydesk")
+if not _app_log.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(levelname)s %(name)s %(message)s"))
+    _app_log.addHandler(_handler)
+    _app_log.setLevel(logging.INFO)
 
 
 @asynccontextmanager
@@ -25,6 +35,7 @@ async def lifespan(app: FastAPI):
     except VectorStoreError as e:
         logger.error("Qdrant not ready at startup: %s", e)
     yield
+    await ticketing.aclose()
 
 
 app = FastAPI(

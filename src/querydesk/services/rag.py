@@ -3,9 +3,9 @@ Retrieval-augmented answering: hybrid search, then a grounded answer that
 cites the articles it used.
 
 This module answers informational questions. It does not decide *whether* a
-message should be answered at all — that's the decision layer (PRD Day 4),
-which calls this function for the ANSWER paths and bypasses it for the SR
-paths. Keep routing rules out of here.
+message should be answered at all — that's the decision layer, which calls
+retrieve() for every message (it needs the score) and generate() only on the
+ANSWER paths. Keep routing rules out of here.
 """
 
 from dataclasses import dataclass, field
@@ -58,10 +58,18 @@ def _to_sources(hits: list[qdrant_store.RetrievedChunk]) -> list[Source]:
     ]
 
 
-async def answer(query: str, vectors: QueryVectors | None = None) -> RagResult:
+@dataclass
+class Retrieval:
+    """What hybrid search found. `top_dense_score` is the confidence signal (PRD Gap #2)."""
+
+    hits: list[qdrant_store.RetrievedChunk]
+    top_dense_score: float
+
+
+async def retrieve(query: str, vectors: QueryVectors | None = None) -> Retrieval:
     """
-    Retrieve and answer. Returns RAG with citations when the knowledge base
-    covers the question, MANUAL_ESCALATION when it doesn't.
+    Hybrid search only — no generation. The decision layer needs the score
+    before it decides whether to answer at all.
 
     Pass `vectors` when the caller has already embedded the query (the router
     shares the same dense vector), so it isn't embedded twice.
@@ -72,20 +80,30 @@ async def answer(query: str, vectors: QueryVectors | None = None) -> RagResult:
     hits, top_dense_score = await qdrant_store.hybrid_search(
         dense_vector=vectors.dense, sparse_vector=vectors.sparse
     )
+    return Retrieval(hits=hits, top_dense_score=top_dense_score)
 
-    if not hits:
+
+async def generate(query: str, retrieval: Retrieval) -> RagResult:
+    """
+    A grounded, cited answer from already-retrieved chunks. Returns
+    MANUAL_ESCALATION without calling the LLM when there is nothing to ground on.
+    """
+    if not retrieval.hits:
         # No LLM call at all. Cheap, deterministic, and it's the guardrail
         # against answering with something invented.
         return RagResult(
             reply=NO_CONTEXT_REPLY,
             resolution_type=ResolutionType.MANUAL_ESCALATION,
             sources=[],
-            retrieval_confidence=top_dense_score,
+            retrieval_confidence=retrieval.top_dense_score,
         )
 
     reply = await chat_completion(
         messages=[
-            {"role": "system", "content": SYSTEM_PROMPT.format(context=_build_context(hits))},
+            {
+                "role": "system",
+                "content": SYSTEM_PROMPT.format(context=_build_context(retrieval.hits)),
+            },
             {"role": "user", "content": query},
         ],
         temperature=0.2,
@@ -94,6 +112,14 @@ async def answer(query: str, vectors: QueryVectors | None = None) -> RagResult:
     return RagResult(
         reply=reply,
         resolution_type=ResolutionType.RAG,
-        sources=_to_sources(hits),
-        retrieval_confidence=top_dense_score,
+        sources=_to_sources(retrieval.hits),
+        retrieval_confidence=retrieval.top_dense_score,
     )
+
+
+async def answer(query: str, vectors: QueryVectors | None = None) -> RagResult:
+    """
+    Retrieve and answer in one call. Returns RAG with citations when the
+    knowledge base covers the question, MANUAL_ESCALATION when it doesn't.
+    """
+    return await generate(query, await retrieve(query, vectors))

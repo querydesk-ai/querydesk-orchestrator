@@ -23,23 +23,23 @@ def category_ids():
     return {c["id"] for c in catalog["categories"]}
 
 
-def test_sixty_rows_split_30_20_10(rows):
-    assert Counter(r.kind for r in rows) == {
-        Kind.ACTION: 30,
-        Kind.INFORMATIONAL: 20,
-        Kind.OUT_OF_SCOPE: 10,
-    }
+def test_meets_the_prd_split_minimums(rows):
+    """PRD: 30 action, 20 informational, 10 out-of-scope — at least; the set grows past it."""
+    kinds = Counter(r.kind for r in rows)
+    assert kinds[Kind.ACTION] >= 30
+    assert kinds[Kind.INFORMATIONAL] >= 20
+    assert kinds[Kind.OUT_OF_SCOPE] >= 10
 
 
 def test_ids_are_unique(rows):
     assert len({r.id for r in rows}) == len(rows)
 
 
-def test_every_category_has_3_action_and_2_informational(rows, category_ids):
+def test_every_category_has_at_least_3_action_and_2_informational(rows, category_ids):
     action = Counter(r.category_id for r in rows if r.kind is Kind.ACTION)
     info = Counter(r.category_id for r in rows if r.kind is Kind.INFORMATIONAL)
-    assert action == {c: 3 for c in category_ids}
-    assert info == {c: 2 for c in category_ids}
+    assert set(action) == category_ids and min(action.values()) >= 3
+    assert set(info) == category_ids and min(info.values()) >= 2
 
 
 def test_categories_come_from_categories_json(rows, category_ids):
