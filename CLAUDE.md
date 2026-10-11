@@ -41,8 +41,13 @@ uv run ruff format .                        # format (CI runs `ruff format --che
 
 uv run scripts/check_services.py            # Qdrant / Redis / Postgres reachability
 uv run scripts/ingest.py --recreate         # re-index data/kb into Qdrant
-uv run scripts/eval_run.py                  # 60-query eval vs live services -> eval/results/
-uv run scripts/eval_report.py               # proposals + docs/eval-report-v0.md (never edits config)
+uv run scripts/eval_run.py                  # eval set vs live services + decision layer -> eval/results/
+uv run scripts/eval_report.py               # proposals + docs/eval-report-latest.md (never edits config)
+uv run scripts/eval_report.py --out docs/eval-report-vN.md --title "Eval report vN"   # publish one
+
+# Stand-in for the partner's ticketing service (PRD contract v1.1), until it exists:
+uv run uvicorn tests.fakes.fake_ticketing:app --port 8081
+TICKETING_BASE_URL=http://127.0.0.1:8081 uv run uvicorn querydesk.main:app --reload
 
 uv run uvicorn querydesk.main:app --reload
 ```
@@ -65,16 +70,27 @@ Everything after SR creation is async (webhook → Redis → Celery).
 
 - **One module owns each external dependency**, and nothing else may talk to it directly:
   `services/llm/fireworks.py` (LLM + embeddings), `services/retrieval/qdrant_store.py` (vector
-  search), `services/retrieval/sparse.py` (BM25). Each raises a subclass of `UpstreamError`
-  (`core/errors.py`), and the routers map that whole family to HTTP 502 in one place.
+  search), `services/retrieval/sparse.py` (BM25), `services/ticketing/client.py` (the ticketing
+  service). Each raises a subclass of `UpstreamError` (`core/errors.py`), and the routers map that
+  whole family to HTTP 502 in one place.
+- `services/catalog.py` is the only app-code reader of `categories.json` (invariant #3); ask it for
+  a category's name, approval rule or required fields.
 - **`core/config.py` is the only reader of the environment.** Nothing else touches `os.environ`;
   import the shared `settings` instance instead of re-instantiating `Settings`.
-- `services/rag.py` orchestrates retrieval + generation. It is a function the decision layer *calls* —
-  routing rules do not go in it.
+- `services/pipeline.py::handle_message()` is the whole `/chat` flow: embed once → `rag.retrieve()`
+  + `router.route()` concurrently → `signals.classify()` → `engine.decide()` → act (generate / create
+  SR / ask for fields / escalate) → one `querydesk.decision` log line (PRD F10). The route in
+  `api/routes/chat.py` stays a thin adapter.
+- `services/rag.py` has `retrieve()` (search only — the decision needs the score first) and
+  `generate()` (the grounded answer). Routing rules do not go in it.
 - `services/retrieval/query.py::embed_query_vectors()` embeds a message **once**; pass the result to
-  both `rag.answer(vectors=...)` and `routing/router.route()`. Embedding is the slowest step (~2 s).
+  both `rag.retrieve(vectors=...)` and `routing/router.route()`. Embedding is the slowest step (~2 s).
 - `services/routing/router.py` reports the top-two categories and whether it is confident; it never
-  decides answer-vs-SR — that is the decision layer's job (Day 4).
+  decides answer-vs-SR — that is the decision layer's job.
+- `services/decision/`: `signals.py` (rule-based is-action / is-status), `extraction.py` (one LLM
+  call for required fields, **SR path only**; absent or unparseable = missing, never guessed),
+  `rules.py` (rule 6 from `data/decision_rules.json`, tighten-only, validated against the catalog),
+  `engine.py` (`DecisionEngine` interface + `RuleEngine`, chosen by `decision_engine`).
 - Use the **async** Qdrant client (`AsyncQdrantClient`). The `/chat` path is async and the sync client
   would block the event loop. `fastembed` is sync and CPU-bound, so call it through
   `anyio.to_thread.run_sync` from async code.
@@ -114,13 +130,22 @@ Query: <text>`). Always use `embed_documents()` / `embed_query()`, never
 
 `resolution_type` is one of `RAG`, `AUTO_SR`, `MANUAL_ESCALATION`. The decision layer (PRD Day 4)
 emits one of `ANSWER`, `ANSWER_WITH_DISCLAIMER`, `COLLECT_DETAILS`, `RAISE_SR`, `ESCALATE`,
-`STATUS_LOOKUP`, first match wins. Only add an enum value when the code can actually emit it —
-`AUTO_SR` arrives with the decision layer, not before.
+`STATUS_LOOKUP`, first match wins (rules in `services/decision/engine.py`). Only add an enum value
+when the code can actually emit it.
+
+**An action request must never be answered with an article** — the PRD's most important failure.
+Retrieval scores can't prevent it (eval: 86% of action requests clear `confidence_high`), so rules
+2–3 require `signals.classify()` to say *not an action*. Any change to `signals.py` must keep
+`tests/unit/test_signals.py` green and be re-measured with the eval (target ≤ 5%).
 
 The decision layer ships as a **rule engine first, behind an interface**, with TypeSafe Jev as a
 swappable implementation. This is deliberate (PRD risk table): Jev's request shape isn't known until
-the Day 4 Playground session, so it must never block the critical path. `TYPESAFE_API_KEY` stays
-unused until then.
+the Playground session, so it must never block the critical path. `TYPESAFE_API_KEY` stays unused
+until the Jev engine lands (Day 5, `docs/plan-days-4-5.md`).
+
+Until the partner's ticketing service exists, `tests/fakes/fake_ticketing.py` implements the PRD
+v1.1 contract (idempotency key, 400 on an unknown category) for tests and manual runs. Field names
+follow the PRD — re-check them against the OpenAPI file once it lands in `querydesk-docs`.
 
 ## Data stores
 
