@@ -48,7 +48,14 @@ class ChatResponse(BaseModel):
     reply: str
     resolution_type: ResolutionType
     sources: list[Source] = Field(default_factory=list)
-    # Top dense cosine similarity, never a fused RRF score. Surfaced now so
-    # Day 3 threshold calibration is observable from the API, and because it's
-    # a column on the PRD's sr_requests table.
+    # Top dense cosine similarity, never a fused RRF score. Surfaced so
+    # threshold calibration is observable from the API, and because it's a
+    # column on the PRD's sr_requests table.
     retrieval_confidence: float | None = None
+    # What the decision layer chose, and what it acted on. All optional so a
+    # client built against the Day 2 response keeps working.
+    decision: Decision | None = None
+    category_id: str | None = None
+    sr_id: str | None = None
+    missing_fields: list[str] = Field(default_factory=list)
+    requires_approval: bool | None = None
