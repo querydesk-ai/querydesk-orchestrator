@@ -187,3 +187,23 @@ async def test_precomputed_vectors_skip_embedding(monkeypatch, llm_spy):
     await rag.answer("q", vectors=QueryVectors(dense=[0.5], sparse=object()))
 
     assert seen["dense"] == [0.5]
+
+
+@pytest.mark.anyio
+async def test_retrieve_does_not_generate(monkeypatch, stub_embeddings, llm_spy):
+    """The decision layer calls retrieve() for every message; it must never hit the LLM."""
+    _stub_search(monkeypatch, [_chunk()], 0.8)
+
+    retrieval = await rag.retrieve("q")
+
+    assert retrieval.top_dense_score == 0.8
+    assert len(retrieval.hits) == 1
+    assert llm_spy == []
+
+
+@pytest.mark.anyio
+async def test_generate_with_no_hits_escalates_without_the_llm(llm_spy):
+    result = await rag.generate("q", rag.Retrieval(hits=[], top_dense_score=0.2))
+
+    assert result.resolution_type is ResolutionType.MANUAL_ESCALATION
+    assert llm_spy == []
