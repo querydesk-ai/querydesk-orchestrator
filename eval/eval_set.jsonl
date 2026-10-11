@@ -58,3 +58,26 @@
 {"id": "oos-08", "query": "it's not working", "kind": "out_of_scope", "expected_decision": "ESCALATE"}
 {"id": "oos-09", "query": "can you give me access to the finance shared drive?", "kind": "out_of_scope", "expected_decision": "ESCALATE"}
 {"id": "oos-10", "query": "order a new monitor for my desk", "kind": "out_of_scope", "expected_decision": "ESCALATE"}
+{"id": "inf-21", "query": "can I restart my own service in UAT", "kind": "informational", "expected_decision": "ANSWER", "category_id": "it_application_restart", "expected_source": "it-application-restart.md"}
+{"id": "inf-22", "query": "how many nodes can the pas-batch cluster have", "kind": "informational", "expected_decision": "ANSWER", "category_id": "it_add_server_cluster", "expected_source": "it-add-server-cluster.md"}
+{"id": "inf-23", "query": "is UAT-3 kept up late during release week or do I need to ask", "kind": "informational", "expected_decision": "ANSWER", "category_id": "it_uat_extension", "expected_source": "it-uat-extension.md"}
+{"id": "inf-24", "query": "what does DNS-3310 mean", "kind": "informational", "expected_decision": "ANSWER", "category_id": "it_dns_firewall_change", "expected_source": "it-dns-firewall-change.md", "lexical": true}
+{"id": "inf-25", "query": "what are the password rules", "kind": "informational", "expected_decision": "ANSWER", "category_id": "it_password_reset", "expected_source": "it-password-reset.md"}
+{"id": "inf-26", "query": "endorsement failed with PAS-4412, what does it mean?", "kind": "informational", "expected_decision": "ANSWER", "category_id": "ops_policy_endorsement", "expected_source": "ops-policy-endorsement.md", "lexical": true}
+{"id": "inf-27", "query": "when are commission statements published in the agent portal?", "kind": "informational", "expected_decision": "ANSWER", "category_id": "ops_commission_payout_query", "expected_source": "ops-commission-payout.md"}
+{"id": "inf-28", "query": "how long is the free-look period on a new policy", "kind": "informational", "expected_decision": "ANSWER", "category_id": "ops_policy_issuance_delay", "expected_source": "ops-policy-issuance-delay.md"}
+{"id": "inf-29", "query": "when does an untouched lead go back to the pool?", "kind": "informational", "expected_decision": "ANSWER", "category_id": "ops_crm_lead_access", "expected_source": "ops-crm-lead-access.md"}
+{"id": "inf-30", "query": "how long is an agent licence valid for", "kind": "informational", "expected_decision": "ANSWER", "category_id": "ops_agent_onboarding_licensing", "expected_source": "ops-agent-onboarding-licensing.md"}
+{"id": "act-31", "query": "can you restart pas-web in UAT? it's throwing 500s", "kind": "action", "expected_decision": "RAISE_SR", "category_id": "it_application_restart", "fields_present": true}
+{"id": "act-32", "query": "leads stopped coming since Monday for AG40112, territory mapping is correct", "kind": "action", "expected_decision": "RAISE_SR", "category_id": "ops_crm_lead_access", "fields_present": true}
+{"id": "act-33", "query": "could you extend UAT-4 till 1 AM tonight? perf test for the renewal batch", "kind": "action", "expected_decision": "RAISE_SR", "category_id": "it_uat_extension", "fields_present": true}
+{"id": "act-34", "query": "we need a DNS change", "kind": "action", "expected_decision": "COLLECT_DETAILS", "category_id": "it_dns_firewall_change", "fields_present": false}
+{"id": "act-35", "query": "fix the nominee on policy 30011223", "kind": "action", "expected_decision": "COLLECT_DETAILS", "category_id": "ops_policy_endorsement", "fields_present": false}
+{"id": "act-36", "query": "my password expired and the reset portal keeps rejecting me", "kind": "action", "expected_decision": "RAISE_SR", "category_id": "it_password_reset", "fields_present": true}
+{"id": "oos-11", "query": "how do I apply for maternity leave", "kind": "out_of_scope", "expected_decision": "ESCALATE"}
+{"id": "oos-12", "query": "my VPN keeps disconnecting every few minutes", "kind": "out_of_scope", "expected_decision": "ESCALATE"}
+{"id": "oos-13", "query": "the printer on floor 3 is jammed again", "kind": "out_of_scope", "expected_decision": "ESCALATE"}
+{"id": "oos-14", "query": "when is the next payroll run?", "kind": "out_of_scope", "expected_decision": "ESCALATE"}
+{"id": "oos-15", "query": "can you restart my laptop remotely?", "kind": "out_of_scope", "expected_decision": "ESCALATE"}
+{"id": "oos-16", "query": "what's the guest wifi password", "kind": "out_of_scope", "expected_decision": "ESCALATE"}
+{"id": "oos-17", "query": "please submit my travel expense claim", "kind": "out_of_scope", "expected_decision": "ESCALATE"}

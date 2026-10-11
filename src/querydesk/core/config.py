@@ -83,8 +83,11 @@ class Settings(BaseSettings):
     # --- Semantic router (PRD F3) ----------------------------------------
     # Cosine similarity of the query to a category description, calibrated in
     # docs/eval-report-v0.md. Below router_min_score the router isn't
-    # confident -> escalate. Tight: lowest in-scope 0.439, an out-of-scope 0.430.
-    router_min_score: float = 0.43
+    # confident -> escalate. Re-calibrated on the 83-row set (Day 4): every
+    # action request scores >= 0.46, and only informational questions (which
+    # rules 2/3 answer without the router) fall below; 1/17 out-of-scope
+    # messages ("salary credited", 0.477) still clears it.
+    router_min_score: float = 0.46
     # The LLM tie-break is off: on the eval set similarity alone picked 49/50
     # categories, the tie-break alone 44/50 at ~1.4s p50. With a 0.00 margin the
     # top-1 category always stands. Kept behind the flag for re-evaluation.

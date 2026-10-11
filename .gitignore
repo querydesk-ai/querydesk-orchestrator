@@ -23,3 +23,6 @@ __pycache__/
 
 # Eval runs (regenerate with scripts/eval_run.py)
 eval/results/
+
+# Scratch eval report (publish a copy as docs/eval-report-vN.md)
+docs/eval-report-latest.md
