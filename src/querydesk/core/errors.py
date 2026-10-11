@@ -27,3 +27,7 @@ class LLMError(UpstreamError):
 
 class VectorStoreError(UpstreamError):
     """Qdrant failed or isn't configured."""
+
+
+class TicketingError(UpstreamError):
+    """The ticketing service failed, rejected the SR, or isn't configured."""
