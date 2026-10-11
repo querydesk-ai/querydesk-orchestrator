@@ -115,7 +115,9 @@ async def _act(
         category = catalog.get(out.category_id)
         wanted = _join([_readable(f) for f in out.missing_fields])
         return ChatResult(
-            reply=f"I can raise a {category.name} request for you. I just need the {wanted}.",
+            # No "a/an" before the name: "a UAT…" vs "an Application…" can't be
+            # decided from spelling, so the sentence avoids needing one.
+            reply=f"I can raise this as a request ({category.name}). I just need the {wanted}.",
             resolution_type=ResolutionType.AUTO_SR,
             missing_fields=out.missing_fields,
             **base,
