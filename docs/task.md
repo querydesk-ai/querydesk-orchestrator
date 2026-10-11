@@ -15,6 +15,8 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
   v1.1 is unapproved and every **P** item from Day 1 on is open. **This blocks Checkpoint 1 (Day 4).**
 - **Next up: Day 4 orchestrator work**, built against the PRD's v1.1 contract with mocked
   ticketing calls, so it is ready the moment the ticketing service exists.
+- **Plan for Days 4–5:** [plan-days-4-5.md](plan-days-4-5.md) — the steps, the decisions behind
+  them, and each day's definition of done.
 
 ---
 
@@ -236,10 +238,18 @@ score ≥ high).
 
 Headline items only, so the board is complete. Each gets its own planning pass when its turn comes.
 
-### Day 5 — Jev
-*Done when: routing accuracy reported for both engines.*
-- [ ] **T** Jev implementation behind the existing interface; run both engines on the eval set; the
-  higher-accuracy one becomes the default.
+### Day 5 — Jev, and the latency decision
+*Done when: routing accuracy reported for both engines; a written recommendation on embedding
+latency.* Detail in [plan-days-4-5.md](plan-days-4-5.md#day-5--jev-and-the-latency-decision).
+- [ ] **T** Jev Playground session (needs your TypeSafe account): confirm the real request/response
+  for the three questions; record it in `docs/jev-notes.md`. *Everything below waits on this.*
+- [ ] **T** `services/llm/jev.py` — the only module that talks to TypeSafe; `JevError(UpstreamError)`.
+- [ ] **T** `JevEngine` behind the Day 4 `DecisionEngine` interface; falls back to `RuleEngine` on a
+  Jev error or a response slower than ~400 ms (decision budget < 500 ms).
+- [ ] **T** `eval_run.py --engine both`; report both engines side by side (routing accuracy, action
+  answered rate, latency, disagreements). The higher routing accuracy becomes the default.
+- [ ] **T** Latency spike: a local fastembed dense model vs `qwen3-embedding-8b` on the eval set
+  (speed, hit@1, router accuracy); written recommendation before Day 8.
 - [ ] **P** Webhook outbox with HMAC signing and backoff retry.
 
 ### Day 6 — slot filling
