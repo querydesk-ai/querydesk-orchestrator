@@ -14,6 +14,7 @@ import httpx
 import pytest
 
 from querydesk.core.config import settings
+from querydesk.core.errors import VectorStoreError
 from querydesk.main import app
 from querydesk.services import pipeline, rag
 from querydesk.services.decision import extraction
@@ -145,8 +146,32 @@ async def test_resending_the_same_message_returns_the_same_sr(world):
     again = (await _chat("restart the claims app in UAT, it's hung")).json()
 
     assert again["sr_id"] == first["sr_id"]
-    assert "already raised" in again["reply"]
+    assert "already have this open" in again["reply"] and "PENDING" in again["reply"]
     assert len(await _srs(world)) == 1
+
+
+async def _move(world, sr_id, *statuses):
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=world.service), base_url="http://ticketing.test"
+    ) as c:
+        for status in statuses:
+            resp = await c.patch(f"/sr/{sr_id}/status", json={"status": status})
+            assert resp.status_code == 200, resp.text
+
+
+@pytest.mark.anyio
+async def test_asking_again_after_the_sr_is_resolved_raises_a_new_sr_the_same_day(world):
+    """A closed SR doesn't swallow a repeat: the new key is chained off its SR number."""
+    first = (await _chat("restart the claims app in UAT, it's hung")).json()
+    await _move(world, first["sr_id"], "IN_PROGRESS", "RESOLVED")
+
+    reopened = (await _chat("restart the claims app in UAT, it's hung")).json()
+    resent = (await _chat("restart the claims app in UAT, it's hung")).json()
+
+    assert reopened["sr_id"] != first["sr_id"]
+    assert "I've raised SR" in reopened["reply"]
+    assert resent["sr_id"] == reopened["sr_id"]  # idempotent again from here
+    assert len(await _srs(world)) == 2
 
 
 @pytest.mark.anyio
@@ -201,6 +226,21 @@ async def test_ticketing_outage_is_a_502(world, monkeypatch):
         raise tk.TicketingError("Ticketing service unreachable")
 
     monkeypatch.setattr(tk, "_make_client", unreachable)
+
+    resp = await _chat("restart the claims app in UAT")
+
+    assert resp.status_code == 502
+
+
+@pytest.mark.parametrize("search", ["hybrid_search", "search_categories"])
+@pytest.mark.anyio
+async def test_search_outage_inside_the_task_group_is_a_502(world, monkeypatch, search):
+    """Retrieval and routing run in an anyio task group, which wraps errors in a group."""
+
+    async def down(*args, **kwargs):
+        raise VectorStoreError("Qdrant unreachable")
+
+    monkeypatch.setattr(qdrant_store, search, down)
 
     resp = await _chat("restart the claims app in UAT")
 
@@ -276,3 +316,23 @@ async def test_every_message_logs_one_structured_decision(world, caplog):
     assert entry["router_top_two"][0][0] == "it_application_restart"
     assert entry["intent"] == {"is_action": True, "is_status": False}
     assert set(entry["latency_ms"]) >= {"embed", "search", "decide", "extraction", "total"}
+    assert entry["error"] is None
+
+
+@pytest.mark.anyio
+async def test_a_failed_sr_creation_still_logs_its_decision(world, monkeypatch, caplog):
+    def unreachable():
+        raise tk.TicketingError("Ticketing service unreachable")
+
+    monkeypatch.setattr(tk, "_make_client", unreachable)
+
+    with caplog.at_level(logging.INFO, logger="querydesk.decision"):
+        resp = await _chat("restart the claims app in UAT, it's hung")
+
+    assert resp.status_code == 502
+    [record] = [r for r in caplog.records if r.name == "querydesk.decision"]
+    entry = json.loads(record.getMessage())
+    assert entry["decision"] == "RAISE_SR"
+    assert entry["category_id"] == "it_application_restart"
+    assert entry["error"] == "TicketingError"
+    assert entry["sr_id"] is None

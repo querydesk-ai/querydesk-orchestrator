@@ -81,3 +81,7 @@
 {"id": "oos-15", "query": "can you restart my laptop remotely?", "kind": "out_of_scope", "expected_decision": "ESCALATE"}
 {"id": "oos-16", "query": "what's the guest wifi password", "kind": "out_of_scope", "expected_decision": "ESCALATE"}
 {"id": "oos-17", "query": "please submit my travel expense claim", "kind": "out_of_scope", "expected_decision": "ESCALATE"}
+{"id": "inf-31", "query": "I would like to know how commission is calculated and when it gets paid", "kind": "informational", "expected_decision": "ANSWER", "category_id": "ops_commission_payout_query", "expected_source": "ops-commission-payout.md"}
+{"id": "inf-32", "query": "can you tell me how long an account lockout lasts", "kind": "informational", "expected_decision": "ANSWER", "category_id": "it_password_reset", "expected_source": "it-password-reset.md"}
+{"id": "inf-33", "query": "I'd like to understand what time UAT shuts down every night", "kind": "informational", "expected_decision": "ANSWER", "category_id": "it_uat_extension", "expected_source": "it-uat-extension.md"}
+{"id": "inf-34", "query": "could you explain whether a rolling restart causes downtime", "kind": "informational", "expected_decision": "ANSWER", "category_id": "it_application_restart", "expected_source": "it-application-restart.md"}

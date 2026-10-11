@@ -31,9 +31,11 @@ from querydesk.services.ticketing import client as ticketing
 
 decision_log = logging.getLogger("querydesk.decision")
 
+# Nothing records an escalation yet (sr_requests lands on Day 6), so the reply
+# must not promise that someone is already on it.
 ESCALATE_REPLY = (
-    "I can't handle this one automatically, so I've flagged it for the service desk team. "
-    "A person will pick it up."
+    "I can't handle this one automatically. Please contact the service desk team "
+    "directly so a person can pick it up."
 )
 STATUS_REPLY = (
     "I can't look up the status of existing requests yet — that's coming soon. "
@@ -99,7 +101,12 @@ async def _act(
             key,
         )
         if record.replayed:
-            reply = f"You already raised this today — it's SR {record.id} ({category.name})."
+            # create_sr only replays an SR that is still open; a closed one
+            # gets a new SR instead.
+            reply = (
+                f"You already have this open — it's SR {record.id} "
+                f"({category.name}, {record.status})."
+            )
         else:
             reply = f"I've raised SR {record.id} for {category.name}."
         reply += (
@@ -130,7 +137,7 @@ async def _act(
     return ChatResult(reply=ESCALATE_REPLY, resolution_type=out.resolution_type, **base)
 
 
-def _log(user_id, query, retrieval, router, intent, out, result, timings) -> None:
+def _log(user_id, query, retrieval, router, intent, out, result, timings, error=None) -> None:
     decision_log.info(
         json.dumps(
             {
@@ -148,7 +155,9 @@ def _log(user_id, query, retrieval, router, intent, out, result, timings) -> Non
                 "requires_approval": out.requires_approval,
                 "overrides": out.overrides,
                 "extraction_ok": out.extraction_ok,
-                "sr_id": result.sr_id,
+                "sr_id": result.sr_id if result else None,
+                # Set when acting on the decision failed (generation, SR creation).
+                "error": error,
                 "latency_ms": timings,
             }
         )
@@ -171,9 +180,14 @@ async def handle_message(
     async def _route():
         found["router"] = await route(query, vectors.dense)
 
-    async with anyio.create_task_group() as tg:
-        tg.start_soon(_retrieve)
-        tg.start_soon(_route)
+    try:
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(_retrieve)
+            tg.start_soon(_route)
+    except BaseExceptionGroup as eg:
+        # anyio wraps task errors in a group; unwrap so a VectorStoreError or
+        # LLMError reaches the route's `except UpstreamError` (502), not a 500.
+        raise eg.exceptions[0] from eg
     retrieval: rag.Retrieval = found["retrieval"]
     router: RouterResult = found["router"]
     searched = time.perf_counter()
@@ -190,17 +204,24 @@ async def handle_message(
     )
     decided = time.perf_counter()
 
-    result = await _act(user_id, query, retrieval, out)
-    done = time.perf_counter()
-
-    timings = {
-        "embed": round((embedded - start) * 1000, 1),
-        "search": round((searched - embedded) * 1000, 1),
-        # The decision layer's own cost; the LLM extraction is reported apart.
-        "decide": round((decided - searched) * 1000 - (out.extraction_ms or 0), 1),
-        "extraction": out.extraction_ms,
-        "act": round((done - decided) * 1000, 1),
-        "total": round((done - start) * 1000, 1),
-    }
-    _log(user_id, query, retrieval, router, intent, out, result, timings)
-    return result
+    result, error = None, None
+    try:
+        result = await _act(user_id, query, retrieval, out)
+        return result
+    except Exception as e:
+        # The failed messages are the ones most worth auditing: log the
+        # decision anyway, then let the route map the error.
+        error = type(e).__name__
+        raise
+    finally:
+        done = time.perf_counter()
+        timings = {
+            "embed": round((embedded - start) * 1000, 1),
+            "search": round((searched - embedded) * 1000, 1),
+            # The decision layer's own cost; the LLM extraction is reported apart.
+            "decide": round((decided - searched) * 1000 - (out.extraction_ms or 0), 1),
+            "extraction": out.extraction_ms,
+            "act": round((done - decided) * 1000, 1),
+            "total": round((done - start) * 1000, 1),
+        }
+        _log(user_id, query, retrieval, router, intent, out, result, timings, error)

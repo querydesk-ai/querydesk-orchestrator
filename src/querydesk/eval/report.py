@@ -87,6 +87,10 @@ def analyse(results: list[dict]) -> Analysis:
     }
 
     # --- Category accuracy -------------------------------------------------
+    # Runs without --tie-break never asked the LLM, so "with tie-break" can't be
+    # measured (None), rather than counting every close call as a miss. Older
+    # result files lack tie_break_ran; any recorded llm_choice means it ran.
+    tie_break_ran = any(r.get("tie_break_ran", r.get("llm_choice") is not None) for r in results)
     category = {}
     for name, rows in (("in_scope", in_scope), ("sr_bound", action)):
         category[name] = {
@@ -97,7 +101,9 @@ def analyse(results: list[dict]) -> Analysis:
                 if rows
                 else 0.0
             ),
-            "with_tie_break": _accuracy(rows, lambda r: _with_tie_break(r, tie_margin)),
+            "with_tie_break": (
+                _accuracy(rows, lambda r: _with_tie_break(r, tie_margin)) if tie_break_ran else None
+            ),
             "tie_break_calls": sum(_margin(r) < tie_margin for r in rows),
         }
 
@@ -235,8 +241,8 @@ def _decisions(results: list[dict]) -> dict:
     }
 
 
-def _pct(x: float) -> str:
-    return f"{x * 100:.0f}%"
+def _pct(x: float | None) -> str:
+    return "n/a" if x is None else f"{x * 100:.0f}%"
 
 
 def _render_decisions(d: dict) -> list[str]:
@@ -338,7 +344,8 @@ def render_markdown(
     lines += [
         "",
         "PRD target: category accuracy on SR-bound queries ≥ 90%. "
-        "A tie-break that returns no usable answer counts as wrong here (it escalates).",
+        "A tie-break that returns no usable answer counts as wrong here (it escalates); "
+        "n/a means the run skipped it (re-run `eval_run.py --tie-break`).",
         "",
         "## Retrieval — Day 2 acceptance gate",
         "",

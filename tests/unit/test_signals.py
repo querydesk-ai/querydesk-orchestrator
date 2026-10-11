@@ -49,6 +49,19 @@ QUESTIONS = [
     "which clusters have a node limit?",
     "any downtime during a rolling restart?",
     "the restart policy for production?",  # no question word, but ends in "?"
+    # Polite information asks: they open like a request but want an answer.
+    "I would like to know how commission is calculated",
+    "I'd like to understand the UAT shutdown schedule",
+    "I want to know why leads disappear",
+    "can you tell me when commission is credited",
+    "could you please explain the restart policy",
+    "tell me how a password lockout works",
+]
+
+# A polite information ask that also asks for something is still an action.
+MIXED = [
+    "I'd like to know when commission is credited, and please raise a dispute for August",
+    "can you tell me the policy and kindly reset my password",
 ]
 
 STATUS = [
@@ -59,6 +72,9 @@ STATUS = [
     "what happened to my request from yesterday?",
     "show my open requests",
     "sr 2201 progress?",
+    "update on SR-1042?",
+    "can you check the status of the request I raised yesterday",
+    "what's the progress on SR-77",
 ]
 
 NOT_STATUS = [
@@ -66,6 +82,14 @@ NOT_STATUS = [
     "the commission statement is missing a policy",
     "restart the claims app in UAT",
     "what does PAS-4412 mean?",
+    # An action on an existing request is not a status question.
+    "Please close SR-1042, the issue is fixed",
+    "close my open requests",
+    "Can you update the ticket with the new policy number",
+    # Informational questions that merely mention requests or statuses.
+    "Where is the request form for VPN access?",
+    "What does the status Pending Approval mean on a request?",
+    "what is the status of a request after approval?",
 ]
 
 
@@ -77,6 +101,11 @@ def test_actions_are_actions(text):
 @pytest.mark.parametrize("text", QUESTIONS)
 def test_questions_are_not_actions(text):
     assert not classify(text).is_action
+
+
+@pytest.mark.parametrize("text", MIXED)
+def test_an_info_ask_with_a_request_in_it_is_an_action(text):
+    assert classify(text).is_action
 
 
 @pytest.mark.parametrize("text", STATUS)

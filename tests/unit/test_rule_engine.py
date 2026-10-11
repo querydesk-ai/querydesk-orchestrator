@@ -126,12 +126,14 @@ async def test_rule4_missing_fields_collect_details():
 
 
 @pytest.mark.anyio
-async def test_rule4_low_score_question_with_confident_router_goes_to_the_sr_path():
-    """PRD rule 4: 'an action request, OR a score below mid, with a confident router'."""
-    ex = StubExtractor(missing=["application"])
-    out = await _engine(ex).decide(_input(action=False, score=MID - 0.01))
+@pytest.mark.parametrize("has_hits", [True, False])
+async def test_low_score_question_with_confident_router_escalates_not_an_sr(has_hits):
+    """Narrower than the PRD's 'or a score below mid': a question never opens an SR."""
+    ex = StubExtractor(fields={"application": "claims", "environment": "UAT"})
+    out = await _engine(ex).decide(_input(action=False, score=MID - 0.01, has_hits=has_hits))
 
-    assert out.decision is Decision.COLLECT_DETAILS and out.rule == 4
+    assert out.decision is Decision.ESCALATE and out.rule == 5
+    assert ex.calls == []
 
 
 @pytest.mark.anyio
@@ -140,7 +142,7 @@ async def test_question_without_hits_skips_the_answer_rules():
     ex = StubExtractor(missing=["application"])
     out = await _engine(ex).decide(_input(score=0.9, has_hits=False))
 
-    assert out.decision is not Decision.ANSWER
+    assert out.decision is Decision.ESCALATE
 
 
 @pytest.mark.anyio
@@ -202,7 +204,20 @@ async def test_rule6_production_restart_needs_approval(env):
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    "env", ["UAT", "pre-prod staging", "preprod", "Pre-Production", "productivity-uat"]
+    "env",
+    [
+        "UAT",
+        "pre-prod staging",
+        "preprod",
+        "Pre-Production",
+        "productivity-uat",
+        "non-prod",
+        "Non Production",
+        "nonprod",
+        "not prod",
+        "prod-like UAT",
+        "production-like",
+    ],
 )
 async def test_rule6_non_production_restart_stays_unapproved(env):
     """Whole-word matching: 'productivity' must not read as 'prod'."""
@@ -235,15 +250,28 @@ async def test_rule6_cannot_switch_approval_off():
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("score", [0.9, 0.5])  # rule-4 SR and rule-2 answer paths
-async def test_rule6_force_escalation_overrides_the_category(score):
+@pytest.mark.parametrize(
+    "fields", [{"application": "a", "environment": "UAT"}, {}]
+)  # RAISE_SR and COLLECT_DETAILS
+async def test_rule6_force_escalation_overrides_the_sr_path(fields):
     rules = parse_rules({"force_escalation": ["it_application_restart"]})
-    ex = StubExtractor(fields={"application": "a", "environment": "UAT"})
-    out = await _engine(ex, rules).decide(_input(action=score == 0.5, score=score))
+    ex = StubExtractor(fields=fields, missing=[] if fields else ["application"])
+    out = await _engine(ex, rules).decide(_input(action=True))
 
     assert out.decision is Decision.ESCALATE
     assert out.resolution_type is ResolutionType.MANUAL_ESCALATION
     assert out.overrides == ["force_escalation: it_application_restart"]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("score", [HIGH, MID])  # rules 2 and 3
+async def test_rule6_force_escalation_leaves_answers_alone(score):
+    """Forcing a category's SRs to a person must not stop its articles answering questions."""
+    rules = parse_rules({"force_escalation": ["it_application_restart"]})
+    out = await _engine(rules=rules).decide(_input(score=score))
+
+    assert out.decision in (Decision.ANSWER, Decision.ANSWER_WITH_DISCLAIMER)
+    assert out.overrides == []
 
 
 @pytest.mark.anyio

@@ -12,6 +12,10 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
 - **Orchestrator lane: Days 1–4 done.** Days 1–3 merged (PR #1); Day 4 on `day4-decision-layer`.
   Eval v1 (83 rows): **routing accuracy 96%** (target ≥ 90%), **action requests answered with an
   article 0%** (target ≤ 5%), informational citations 30/30 — `docs/eval-report-v1-day4.md`.
+- **Day 4 code-review fixes (2026-10-11):** 502 mapping, same-day reopen keyed off the closed SR's
+  number, tighter status/action signals, rule 4 narrowed to actions, decision logged on failure.
+  Eval v2 (87 rows): **routing accuracy 97%**, action answered 0%, same 5 known misses —
+  `docs/eval-report-v2.md`.
 - **Checkpoint 1 met against a stand-in.** A `/chat` message creates an SR and resending it returns
   the same SR, verified live against `tests/fakes/fake_ticketing.py` (PRD v1.1 contract). The real
   check waits on the partner's service: `querydesk-ticketing` and `querydesk-docs` are still empty.
@@ -193,11 +197,13 @@ score ≥ high).
   1. asks about an existing request → `STATUS_LOOKUP`
   2. not an action, score ≥ `confidence_high` → `ANSWER` (`RAG`)
   3. not an action, score ≥ `confidence_mid` → `ANSWER_WITH_DISCLAIMER` + offer to raise an SR
-  4. action (or score < mid) **and** router confident → `RAISE_SR` (`AUTO_SR`) if fields complete,
-     else `COLLECT_DETAILS`
-  5. router not confident / outside the 10 categories → `ESCALATE` (`MANUAL_ESCALATION`)
+  4. action **and** router confident → `RAISE_SR` (`AUTO_SR`) if fields complete,
+     else `COLLECT_DETAILS` *(narrower than the PRD's "or score < mid" — a question never opens
+     an SR; see plan-days-4-5.md)*
+  5. router not confident / outside the 10 categories / unanswered question → `ESCALATE`
+     (`MANUAL_ESCALATION`)
   6. config rules apply last and can only **tighten**: force approval (e.g. prod restarts for a
-     `conditional` category) or force escalation for a category.
+     `conditional` category) or force escalation of a category's SRs.
 - [x] **T** Unit tests: one per rule, the first-match ordering, and that rule 6 can tighten but never
   loosen. All offline.
 
@@ -260,6 +266,9 @@ latency.* Detail in [plan-days-4-5.md](plan-days-4-5.md#day-5--jev-and-the-laten
 *Done when: a UAT extension SR raised from one message plus one follow-up.*
 - [ ] **T** Redis slot-filling state (`conversation:{user_id}`, 30-min TTL, max 2 follow-up turns);
   duplicate check (no second open SR per user + category); `sr_requests` table.
+- [ ] **T** Record every `ESCALATE` in `sr_requests` (`MANUAL_ESCALATION`) so a person can pick it
+  up, then change `ESCALATE_REPLY` back to "flagged for the service desk". Until then the reply
+  tells the user to contact the desk directly — nothing is persisted.
 - [ ] **P** UAT auto-revert scheduler; approver and note on status changes.
 
 ### Day 7 — notifications · **Checkpoint 2**

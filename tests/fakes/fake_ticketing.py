@@ -7,8 +7,9 @@ real server for manual runs:
 
     uv run uvicorn tests.fakes.fake_ticketing:app --port 8081
 
-It implements only what the orchestrator uses — not the state machine,
-webhooks or the revert scheduler. State is in memory and lost on restart.
+It implements only what the orchestrator uses, plus the PRD status
+transitions so tests can close an SR — not webhooks, status history or the
+revert scheduler. State is in memory and lost on restart.
 """
 
 from datetime import UTC, datetime
@@ -19,6 +20,14 @@ from pydantic import BaseModel, Field
 
 from querydesk.services import catalog
 
+# PRD transitions: from-status -> allowed to-statuses. PENDING depends on
+# requires_approval, so it is decided per SR in change_status().
+TRANSITIONS = {
+    "APPROVED": {"IN_PROGRESS"},
+    "IN_PROGRESS": {"RESOLVED"},
+    "RESOLVED": {"REVERTED"},
+}
+
 
 class SRIn(BaseModel):
     user_id: str
@@ -26,6 +35,11 @@ class SRIn(BaseModel):
     description: str
     requires_approval: bool
     metadata: dict = Field(default_factory=dict)
+
+
+class StatusIn(BaseModel):
+    status: str
+    note: str | None = None
 
 
 def create_app() -> FastAPI:
@@ -68,6 +82,21 @@ def create_app() -> FastAPI:
         if sr_id not in store:
             raise HTTPException(status_code=404, detail="SR not found")
         return store[sr_id]
+
+    @app.patch("/sr/{sr_id}/status")
+    def change_status(sr_id: int, change: StatusIn) -> dict:
+        if sr_id not in store:
+            raise HTTPException(status_code=404, detail="SR not found")
+        record = store[sr_id]
+        current, target = record["status"], change.status
+        allowed = TRANSITIONS.get(current, set())
+        if current == "PENDING":
+            allowed = {"APPROVED", "REJECTED"} if record["requires_approval"] else {"IN_PROGRESS"}
+        if target not in allowed:
+            raise HTTPException(status_code=409, detail=f"Cannot move {current} -> {target}")
+        record["status"] = target
+        record["updated_at"] = datetime.now(UTC).isoformat()
+        return record
 
     @app.get("/sr")
     def list_srs(user_id: str | None = None, status: str | None = None) -> list[dict]:

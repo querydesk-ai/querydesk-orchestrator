@@ -63,6 +63,16 @@ def test_tie_break_rescues_the_close_call():
     assert sr["with_tie_break"] == 1.0
 
 
+def test_tie_break_is_not_measured_when_the_run_skipped_it():
+    """A run without --tie-break must not count every close call as a miss."""
+    skipped = [{**r, "llm_choice": None, "tie_break_ran": False} for r in RUN]
+    a = analyse(skipped)
+
+    assert a.category["sr_bound"]["with_tie_break"] is None
+    assert a.category["sr_bound"]["top1"] == 0.5
+    assert "| n/a |" in render_markdown(a, "run.jsonl", CURRENT)
+
+
 def test_retrieval_hits_and_lexical_rows():
     a = analyse(RUN)
     assert a.retrieval["hit_at_1"] == 0.5  # i2 cites b.md second

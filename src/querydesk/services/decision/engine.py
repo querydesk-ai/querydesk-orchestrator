@@ -8,8 +8,12 @@ rules, first match wins:
   1. asks about an existing request            -> STATUS_LOOKUP
   2. not an action, has hits, score >= high    -> ANSWER                 (RAG)
   3. not an action, has hits, score >= mid     -> ANSWER_WITH_DISCLAIMER (RAG)
-  4. (action or score < mid), router confident -> RAISE_SR / COLLECT_DETAILS (AUTO_SR)
+  4. action, router confident                  -> RAISE_SR / COLLECT_DETAILS (AUTO_SR)
   5. anything else                             -> ESCALATE               (MANUAL_ESCALATION)
+
+Rule 4 is narrower than the PRD's wording ("an action, or a score below
+mid"): a question we can't answer goes to a person, never to an SR the user
+didn't ask for (docs/plan-days-4-5.md).
   6. config rules, applied last, tighten only  -> force approval / force escalation
 
 Scores are the top *dense* similarity, never a fused RRF score (invariant #1).
@@ -102,8 +106,9 @@ class RuleEngine:
                     router_category,
                 )
 
-        # 4. Heading for an SR — but only into a category we're sure of.
-        if router_category is not None:
+        # 4. Heading for an SR — only for an action, and only into a category
+        # we're sure of. A question that fell through rules 2-3 escalates.
+        if inp.intent.is_action and router_category is not None:
             return await self._sr_path(inp.query, router_category)
 
         # 5. Not answerable, not routable: a person takes it.
@@ -129,10 +134,12 @@ class RuleEngine:
         )
 
     def _tighten(self, out: DecisionOutput) -> DecisionOutput:
-        """Rule 6. Only ever adds approval or forces an escalation."""
-        if out.category_id in self._rules.force_escalation and out.decision is not (
-            Decision.ESCALATE
-        ):
+        """
+        Rule 6. Only ever adds approval or forces an escalation — and only on
+        the SR path: forcing a category to a person means its *requests* need
+        one, not that its KB articles stop answering questions.
+        """
+        if out.decision in _SR_PATH and out.category_id in self._rules.force_escalation:
             out.overrides.append(f"force_escalation: {out.category_id}")
             out.decision = Decision.ESCALATE
             out.resolution_type = ResolutionType.MANUAL_ESCALATION

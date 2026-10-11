@@ -11,7 +11,7 @@ from querydesk.core.errors import TicketingError
 from querydesk.main import app
 from querydesk.models.schemas import Decision, ResolutionType, Source
 from querydesk.services.llm.fireworks import FireworksError
-from querydesk.services.pipeline import ChatResult
+from querydesk.services.pipeline import ESCALATE_REPLY, ChatResult
 from querydesk.services.retrieval.qdrant_store import QdrantStoreError
 
 
@@ -102,7 +102,7 @@ async def test_escalation_is_a_200_with_no_sources(monkeypatch, client):
     _patch(
         monkeypatch,
         ChatResult(
-            reply="A person will pick it up.",
+            reply=ESCALATE_REPLY,
             resolution_type=ResolutionType.MANUAL_ESCALATION,
             decision=Decision.ESCALATE,
             retrieval_confidence=0.1,

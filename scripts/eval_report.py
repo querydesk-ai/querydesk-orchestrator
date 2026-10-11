@@ -51,9 +51,10 @@ def main(results_path: Path | None, out: Path, title: str) -> None:
     for k, v in analysis.proposals.items():
         print(f"  {k:20} {current[k]:.2f} -> {v:.2f}")
     sr = analysis.category["sr_bound"]
+    with_tb = sr["with_tie_break"]
     print(
-        f"\nSR-bound category accuracy: top-1 {sr['top1']:.0%}, "
-        f"with tie-break {sr['with_tie_break']:.0%}"
+        f"\nSR-bound category accuracy: top-1 {sr['top1']:.0%}, with tie-break "
+        + (f"{with_tb:.0%}" if with_tb is not None else "n/a (run eval_run.py --tie-break)")
     )
     print(f"Informational source hit@k: {analysis.retrieval['hit_at_k']:.0%}")
     if analysis.decisions:

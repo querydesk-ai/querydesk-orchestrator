@@ -16,7 +16,13 @@ from pathlib import Path
 from querydesk.core.config import settings
 from querydesk.services import catalog
 
-_PRE_PROD = re.compile(r"\bpre[\s_-]?prod(uction)?\b")
+# Phrases that contain "prod" but mean *not* production. Each collapses to one
+# word before matching, so the bare "prod" inside them can't match.
+_NOT_PROD = (
+    (re.compile(r"\bpre[\s_-]?prod(uction)?\b"), "preprod"),
+    (re.compile(r"\b(non|not)[\s_-]?prod(uction)?\b"), "nonprod"),
+    (re.compile(r"\bprod(uction)?[\s_-]?like\b"), "prodlike"),
+)
 
 
 class DecisionRulesError(ValueError):
@@ -40,10 +46,12 @@ class ForceApproval:
         if not value:
             return False
         # Whole-word, case-insensitive: "PROD", "prod-eu" and "production"
-        # match; "productivity" doesn't. Pre-production is collapsed to one
-        # word first so "pre-prod" doesn't read as "prod" — the KB says
-        # pre-production restarts need no approval.
-        text = _PRE_PROD.sub("preprod", value.lower())
+        # match; "productivity" doesn't. "pre-prod", "non-prod" and
+        # "prod-like" are collapsed to one word first so they don't read as
+        # "prod" — the KB says non-production restarts need no approval.
+        text = value.lower()
+        for pattern, word in _NOT_PROD:
+            text = pattern.sub(word, text)
         words = set(re.findall(r"[a-z0-9]+", text))
         return any(v.lower() in words for v in self.values)
 

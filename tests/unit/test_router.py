@@ -117,12 +117,14 @@ async def test_tie_break_prompt_lists_both_candidates(monkeypatch, llm):
 
 @pytest.mark.anyio
 async def test_tie_break_reply_is_normalised(monkeypatch, llm):
-    _stub_categories(monkeypatch, [_hit("a_cat", 0.60), _hit("b_cat", 0.59)])
-    llm["reply"] = "  `B_CAT`.\n"
+    _stub_categories(
+        monkeypatch, [_hit("it_application_restart", 0.60), _hit("it_password_reset", 0.59)]
+    )
+    llm["reply"] = "  `IT_PASSWORD_RESET`.\n"
 
     result = await router.route("q", [0.1])
 
-    assert result.category_id == "b_cat"
+    assert result.category_id == "it_password_reset"
 
 
 @pytest.mark.anyio
@@ -156,3 +158,29 @@ async def test_disabled_tie_break_leaves_close_calls_unconfident(monkeypatch, ll
 
     assert not result.confident
     assert llm["calls"] == []
+
+
+@pytest.mark.anyio
+async def test_a_category_missing_from_the_catalog_is_not_confident(monkeypatch, llm, caplog):
+    """A stale `categories` collection must escalate, not 500 later in catalog.get()."""
+    _stub_categories(
+        monkeypatch, [_hit("it_retired_category", 0.71), _hit("it_password_reset", 0.4)]
+    )
+
+    result = await router.route("restart the thing", [0.1])
+
+    assert not result.confident and result.category_id is None
+    assert result.top_two[0].category_id == "it_retired_category"  # raw ranking kept for the log
+    assert "ingest.py --recreate" in caplog.text
+
+
+@pytest.mark.anyio
+async def test_a_tie_break_winner_missing_from_the_catalog_is_not_confident(monkeypatch, llm):
+    _stub_categories(
+        monkeypatch, [_hit("it_retired_category", 0.60), _hit("it_password_reset", 0.59)]
+    )
+    llm["reply"] = "it_retired_category"
+
+    result = await router.route("restart the thing", [0.1])
+
+    assert not result.confident and result.category_id is None

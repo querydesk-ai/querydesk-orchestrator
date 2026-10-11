@@ -75,9 +75,14 @@ extract required fields, so the answer path gets no extra call. Jev may replace 
 | 1 | asks about an existing request | STATUS_LOOKUP | MANUAL_ESCALATION (lookup is Day 8) |
 | 2 | not an action, has hits, score ≥ high | ANSWER | RAG |
 | 3 | not an action, has hits, score ≥ mid | ANSWER_WITH_DISCLAIMER | RAG |
-| 4 | (action or score < mid) and router confident | RAISE_SR if fields complete, else COLLECT_DETAILS | AUTO_SR |
+| 4 | action and router confident | RAISE_SR if fields complete, else COLLECT_DETAILS | AUTO_SR |
 | 5 | anything else | ESCALATE | MANUAL_ESCALATION |
-| 6 | applied last, **tighten only** | force approval / force escalation | — |
+| 6 | applied last, **tighten only** | force approval / force escalation (SR path only) | — |
+
+- **Rule 4 deviates from the PRD on purpose.** The PRD reads "an action, *or a score below mid*,
+  with a confident router", which let a plain question with a weak KB match open an SR the user
+  never asked for. A question that falls through rules 2–3 now escalates instead (decided
+  2026-10-11 after the Day 4 code review).
 
 - Rule 6 lives in `data/decision_rules.json`, which the orchestrator owns.
   - Example: a production restart needs approval even though `it_application_restart` is

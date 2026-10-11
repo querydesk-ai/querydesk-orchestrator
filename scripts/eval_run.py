@@ -60,7 +60,10 @@ async def run_row(row, engine, with_tie_break: bool) -> dict:
     route_ms = _ms(t)
 
     llm_choice, tie_break_ms = None, None
-    if with_tie_break and row.kind is not Kind.OUT_OF_SCOPE and len(router.top_two) == 2:
+    tie_break_ran = (
+        with_tie_break and row.kind is not Kind.OUT_OF_SCOPE and len(router.top_two) == 2
+    )
+    if tie_break_ran:
         t = time.perf_counter()
         llm_choice = await tie_break(row.query, router.top_two)
         tie_break_ms = _ms(t)
@@ -84,6 +87,9 @@ async def run_row(row, engine, with_tie_break: bool) -> dict:
         "sources": [h.source_path for h in hits],
         "top_two": [[c.category_id, c.score] for c in router.top_two],
         "llm_choice": llm_choice,
+        # False when the run skipped the tie-break: llm_choice None is then "not
+        # asked", not "the LLM had no answer".
+        "tie_break_ran": tie_break_ran,
         "intent": asdict(intent),
         "decision": out.decision.value,
         "rule": out.rule,

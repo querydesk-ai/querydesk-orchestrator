@@ -63,6 +63,12 @@ def test_key_differs_for_a_different_request(other):
     assert tk.idempotency_key(*other) != base
 
 
+def test_next_key_is_deterministic_and_depends_on_the_closed_sr():
+    assert tk.next_key("k", "1001") == tk.next_key("k", "1001")
+    assert tk.next_key("k", "1001") != tk.next_key("k", "1002")
+    assert tk.next_key("k", "1001") != "k"
+
+
 # --- HTTP contract (respx) ----------------------------------------------------
 
 
@@ -93,6 +99,48 @@ async def test_a_200_is_a_replay_of_the_original():
     record = await tk.create_sr(SR, "key-1")
 
     assert record.replayed and record.id == "1001"
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_a_replayed_closed_sr_chains_to_a_new_key():
+    closed = {**SR_BODY, "status": "RESOLVED"}
+    created = {**SR_BODY, "id": 1002}
+    route = respx.post(f"{BASE}/sr").mock(
+        side_effect=[httpx.Response(200, json=closed), httpx.Response(201, json=created)]
+    )
+
+    record = await tk.create_sr(SR, "key-1")
+
+    keys = [c.request.headers["Idempotency-Key"] for c in route.calls]
+    assert keys == ["key-1", tk.next_key("key-1", "1001")]
+    assert record.id == "1002" and not record.replayed
+
+
+@pytest.mark.anyio
+@respx.mock
+@pytest.mark.parametrize("status", ["PENDING", "APPROVED", "IN_PROGRESS"])
+async def test_a_replayed_open_sr_is_returned_as_is(status):
+    route = respx.post(f"{BASE}/sr").mock(
+        return_value=httpx.Response(200, json={**SR_BODY, "status": status})
+    )
+
+    record = await tk.create_sr(SR, "key-1")
+
+    assert record.replayed and record.id == "1001"
+    assert route.call_count == 1
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_chaining_gives_up_after_max_reopens():
+    respx.post(f"{BASE}/sr").mock(
+        return_value=httpx.Response(200, json={**SR_BODY, "status": "REJECTED"})
+    )
+
+    with pytest.raises(tk.TicketingError, match="Gave up"):
+        await tk.create_sr(SR, "key-1")
+    assert respx.calls.call_count == tk.MAX_REOPENS + 1
 
 
 @pytest.mark.anyio
@@ -174,8 +222,50 @@ async def test_stand_in_creates_then_replays(fake_service):
 
 
 @pytest.mark.anyio
+async def test_stand_in_reopens_after_resolve_and_enforces_transitions(fake_service):
+    first = await tk.create_sr(SR, "same-key")
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=fake_service), base_url=BASE
+    ) as c:
+        assert (
+            await c.patch(f"/sr/{first.id}/status", json={"status": "RESOLVED"})
+        ).status_code == 409
+        for status in ("IN_PROGRESS", "RESOLVED"):
+            assert (
+                await c.patch(f"/sr/{first.id}/status", json={"status": status})
+            ).status_code == 200
+
+    second = await tk.create_sr(SR, "same-key")
+    again = await tk.create_sr(SR, "same-key")
+
+    assert second.id != first.id and not second.replayed
+    assert again.id == second.id and again.replayed
+
+
+@pytest.mark.anyio
 async def test_stand_in_rejects_an_unknown_category(fake_service):
     bad = tk.SRCreate(user_id="u1", category_id="nope", description="d", requires_approval=False)
 
     with pytest.raises(tk.TicketingError, match="400"):
         await tk.create_sr(bad, "k")
+
+
+@pytest.mark.anyio
+async def test_the_http_client_is_shared_across_calls(monkeypatch):
+    app = create_app()
+    built = []
+
+    def make():
+        built.append(1)
+        return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=BASE)
+
+    monkeypatch.setattr(tk, "_make_client", make)
+
+    first = await tk.create_sr(SR, "k1")
+    await tk.create_sr(SR, "k2")
+    await tk.get_sr(first.id)
+    assert len(built) == 1
+
+    await tk.aclose()
+    await tk.get_sr(first.id)  # rebuilt after a close
+    assert len(built) == 2
