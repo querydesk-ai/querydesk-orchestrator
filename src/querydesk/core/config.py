@@ -94,9 +94,21 @@ class Settings(BaseSettings):
     router_tie_margin: float = 0.00
     router_tie_break_enabled: bool = False
 
+    # --- Decision layer (PRD Day 4) --------------------------------------
+    # Which DecisionEngine runs: "rules" now; "jev" arrives on Day 5.
+    decision_engine: str = "rules"
+
+    # --- Ticketing service -------------------------------------------------
+    # The partner's Spring Boot service. Until it exists, run the stand-in:
+    # uv run uvicorn tests.fakes.fake_ticketing:app --port 8081
+    ticketing_base_url: str = ""
+    ticketing_timeout_s: float = 10.0
+
     # --- Content ---------------------------------------------------------
     kb_dir: Path = BASE_DIR / "data" / "kb"
     categories_file: Path = BASE_DIR / "data" / "categories.json"
+    # Rule 6 (tighten-only overrides), owned by this repo.
+    decision_rules_file: Path = BASE_DIR / "data" / "decision_rules.json"
 
 
 # Single shared instance — import `settings` elsewhere, don't re-instantiate.
