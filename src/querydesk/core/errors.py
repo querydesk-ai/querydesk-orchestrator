@@ -31,3 +31,7 @@ class VectorStoreError(UpstreamError):
 
 class TicketingError(UpstreamError):
     """The ticketing service failed, rejected the SR, or isn't configured."""
+
+
+class RedisStoreError(UpstreamError):
+    """Redis failed or isn't configured."""

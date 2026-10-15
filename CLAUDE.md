@@ -71,7 +71,7 @@ Everything after SR creation is async (webhook → Redis → Celery).
 - **One module owns each external dependency**, and nothing else may talk to it directly:
   `services/llm/fireworks.py` (LLM + embeddings), `services/retrieval/qdrant_store.py` (vector
   search), `services/retrieval/sparse.py` (BM25), `services/ticketing/client.py` (the ticketing
-  service). Each raises a subclass of `UpstreamError` (`core/errors.py`), and the routers map that
+  service), `services/state/redis_store.py` (Redis). Each raises a subclass of `UpstreamError` (`core/errors.py`), and the routers map that
   whole family to HTTP 502 in one place.
 - `services/catalog.py` is the only app-code reader of `categories.json` (invariant #3); ask it for
   a category's name, approval rule or required fields.
@@ -84,7 +84,9 @@ Everything after SR creation is async (webhook → Redis → Celery).
 - `services/rag.py` has `retrieve()` (search only — the decision needs the score first) and
   `generate()` (the grounded answer). Routing rules do not go in it.
 - `services/retrieval/query.py::embed_query_vectors()` embeds a message **once**; pass the result to
-  both `rag.retrieve(vectors=...)` and `routing/router.route()`. Embedding is the slowest step (~2 s).
+  both `rag.retrieve(vectors=...)` and `routing/router.route()`. Embedding is the slowest step (~2 s),
+  so dense vectors are cached in Redis (`qemb:{model}:{sha256}`); a Redis failure is a cache miss,
+  never an error. `eval_run.py` turns the cache off so it measures real latency.
 - `services/routing/router.py` reports the top-two categories and whether it is confident; it never
   decides answer-vs-SR — that is the decision layer's job.
 - `services/decision/`: `signals.py` (rule-based is-action / is-status), `extraction.py` (one LLM

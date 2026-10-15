@@ -165,6 +165,7 @@ src/querydesk/
       rules.py                  # rule 6 from data/decision_rules.json, tighten-only
       engine.py                 # DecisionEngine interface + RuleEngine
     ticketing/client.py         # the only module that talks to the ticketing service
+    state/redis_store.py        # the only module that talks to Redis (query-embedding cache)
 tests/
   unit/                         # pure + mocked-dependency tests
   integration/                  # ASGI app driven in-process, still offline

@@ -1,5 +1,7 @@
 import pytest
 
+from querydesk.core.config import settings
+from querydesk.services.state import redis_store
 from querydesk.services.ticketing import client as ticketing
 
 
@@ -25,3 +27,15 @@ def fresh_ticketing_client():
     ticketing._client = None
     yield
     ticketing._client = None
+
+
+@pytest.fixture(autouse=True)
+def no_query_cache(monkeypatch):
+    """
+    Keep the suite offline even when a developer's .env sets REDIS_URL: the
+    query-embedding cache is off unless a test turns it on (with fakeredis).
+    """
+    monkeypatch.setattr(settings, "query_cache_enabled", False)
+    redis_store._client = None
+    yield
+    redis_store._client = None

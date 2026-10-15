@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from querydesk.api.routes import chat, health
 from querydesk.core.errors import VectorStoreError
 from querydesk.services.retrieval.qdrant_store import ensure_collections
+from querydesk.services.state import redis_store
 from querydesk.services.ticketing import client as ticketing
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ async def lifespan(app: FastAPI):
         logger.error("Qdrant not ready at startup: %s", e)
     yield
     await ticketing.aclose()
+    await redis_store.aclose()
 
 
 app = FastAPI(
