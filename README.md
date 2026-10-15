@@ -121,6 +121,7 @@ the decision layer. It runs against live services:
 uv run scripts/eval_run.py                  # writes eval/results/<timestamp>.jsonl
 uv run scripts/eval_report.py               # docs/eval-report-latest.md + threshold proposals
 uv run scripts/eval_report.py --out docs/eval-report-vN.md --title "Eval report vN"
+uv run --with psutil scripts/latency_spike.py   # local embedding models vs qwen3 (no API key)
 ```
 
 The report proposes thresholds but never edits config — change them deliberately and record the
@@ -180,6 +181,7 @@ scripts/
   ingest.py                     # build the Qdrant collections
   eval_run.py                   # run the eval set through retrieval, router + decision layer
   eval_report.py                # report + threshold proposals
+  latency_spike.py              # local embedding models vs qwen3, in-memory Qdrant
   check_services.py             # Qdrant/Redis/Postgres reachability
 ```
 

@@ -261,8 +261,13 @@ latency.* Detail in [plan-days-4-5.md](plan-days-4-5.md#day-5--jev-and-the-laten
   Jev error or a response slower than ~400 ms (decision budget < 500 ms).
 - [ ] **T** `eval_run.py --engine both`; report both engines side by side (routing accuracy, action
   answered rate, latency, disagreements). The higher routing accuracy becomes the default.
-- [ ] **T** Latency spike: a local fastembed dense model vs `qwen3-embedding-8b` on the eval set
-  (speed, hit@1, router accuracy); written recommendation before Day 8.
+- [x] **T** Latency spike: a local fastembed dense model vs `qwen3-embedding-8b` on the eval set
+  (speed, hit@1, router accuracy); written recommendation before Day 8. *Done 2026-10-15: Redis
+  query cache shipped (2.6 s → 30–60 ms on a repeat); spike in `scripts/latency_spike.py`. Keep
+  qwen3 for now and trial `bge-base-en-v1.5` (97% action routing, 36 ms) through the full eval —
+  [latency-recommendation.md](latency-recommendation.md).*
+- [ ] **T** bge-base trial behind an `embed_backend` setting, separate collections, full eval +
+  re-calibration; adopt only if it holds routing ≥ 95% and no wrong-category SRs. Before Day 8.
 - [ ] **P** Webhook outbox with HMAC signing and backoff retry.
 
 ### Day 6 — slot filling

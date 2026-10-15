@@ -44,6 +44,7 @@ uv run scripts/ingest.py --recreate         # re-index data/kb into Qdrant
 uv run scripts/eval_run.py                  # eval set vs live services + decision layer -> eval/results/
 uv run scripts/eval_report.py               # proposals + docs/eval-report-latest.md (never edits config)
 uv run scripts/eval_report.py --out docs/eval-report-vN.md --title "Eval report vN"   # publish one
+uv run --with psutil scripts/latency_spike.py   # local embedding models vs qwen3 (in-memory Qdrant)
 
 # Stand-in for the partner's ticketing service (PRD contract v1.1), until it exists:
 uv run uvicorn tests.fakes.fake_ticketing:app --port 8081
