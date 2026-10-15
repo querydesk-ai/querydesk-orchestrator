@@ -1,5 +1,26 @@
 # Jev notes (Day 5)
 
+## Decision (2026-10-15)
+
+**Jev is kept as an offline benchmark, not as a fallback, and not on the `/chat` path.** A fallback
+has to beat the primary engine on speed or availability, and Jev is worse on every count:
+
+- **Slower:** 3.5–7 s per live call against ~0 ms, with a decision budget of 500 ms.
+- **Less reliable:** a third-party service, network calls and expiring credits, while the rule
+  engine is local code.
+- **Less accurate:** 91% vs 97% routing accuracy, and it answered one action request with an
+  article.
+
+The code stays because it is small, isolated and offline-tested, and it costs nothing at rest:
+`services/llm/jev.py`, `scripts/jev_compare.py`, `tests/unit/test_jev.py`. It is the evidence
+behind the PRD's "both engines reported" and can be re-run free from cache.
+
+**Reopen only if both hold:**
+1. A direct `api.typesafe.ai` key (or a faster Jev) gives sub-500 ms calls.
+2. Jev beats the rule engine on **held-out** rows.
+
+Until then, the remaining 22 credits stay unspent.
+
 **Result: the rule engine stays the default.** On the full 87-row eval set it routes 97% of messages
 correctly against Jev's 91%. It never answers an action request with an article (Jev: 3%, one row),
 and it decides in ~0 ms against Jev's 3.5–7 s per live call. Jev is wired up as a measured

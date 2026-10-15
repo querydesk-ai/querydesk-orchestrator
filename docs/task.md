@@ -261,6 +261,9 @@ latency.* Detail in [plan-days-4-5.md](plan-days-4-5.md#day-5--jev-and-the-laten
 - [x] **T** Both engines on the full eval set (`scripts/jev_compare.py`, batches of 10, cached,
   27 credits): **rules 97% vs Jev 91%** routing accuracy; action answered 0% vs 3%. **Rules stays
   the default.**
+- [x] **T** Decision: Jev is kept as an **offline benchmark, not a fallback** — slower, less
+  reliable and less accurate than the rule engine
+  ([jev-notes.md](jev-notes.md#decision-2026-10-15)).
 - [ ] ~~**T** Live `JevEngine` with a rules fallback~~ — *not built: every live call would exceed the
   decision budget and spend a credit. Revisit only with a direct TypeSafe key.*
 - [x] **T** Latency spike: a local fastembed dense model vs `qwen3-embedding-8b` on the eval set
