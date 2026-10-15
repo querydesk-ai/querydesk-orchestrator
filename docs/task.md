@@ -9,19 +9,27 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
 
 ## Where we are — 2026-10-15
 
-- **Orchestrator lane: Days 1–4 done and merged** (PRs #1, #3, #4). Eval v2 (87 rows):
-  **routing accuracy 97%** (target ≥ 90%), **action requests answered with an article 0%**
-  (target ≤ 5%), SR-bound category accuracy 100% — `docs/eval-report-v2.md`.
-- **Checkpoint 1 met against a stand-in.** A `/chat` message creates an SR and resending it returns
-  the same SR, verified live against `tests/fakes/fake_ticketing.py` (PRD v1.1 contract). The real
-  check waits on the partner's service, which is being built locally and not pushed yet.
-  `querydesk-docs` (contract v1.1) is Tanmay's to write.
-- **CI:** the `secrets` job fails until the `GITLEAKS_LICENSE` repo secret is set (the tests job
-  passes).
-- **Next up: Day 5.** Jev (Playground session 2026-10-15) and the latency work: a Redis cache for
-  query embeddings plus a local-embedding spike.
-- **Plan for Days 4–5:** [plan-days-4-5.md](plan-days-4-5.md) — the steps, the decisions behind
-  them, and each day's definition of done.
+- **Orchestrator lane: Days 1–5 done.** Eval v2 (87 rows): **routing accuracy 97%** (target
+  ≥ 90%), **action requests answered with an article 0%** (target ≤ 5%), SR-bound category
+  accuracy 100% — `docs/eval-report-v2.md`.
+- **Day 5:**
+  - Redis query-embedding cache (2.6 s → 30–60 ms on a repeat).
+  - Local-embedding spike: keep qwen3 for now, trial bge-base before Day 8
+    ([latency-recommendation.md](latency-recommendation.md)).
+  - Jev vs rules on the full eval set: **rules 97%, Jev 91%**, and Jev takes 3.5–7 s per call. Jev
+    is kept as an **offline benchmark, not a fallback** ([jev-notes.md](jev-notes.md)). 22
+    JevStation credits remain (they expire 2026-11-14), so don't spend them.
+- **Checkpoint 1 met against a stand-in** (`tests/fakes/fake_ticketing.py`, PRD v1.1 contract).
+  - The real check waits on the partner's service, which is being built locally and not pushed
+    yet.
+  - `querydesk-docs` (contract v1.1) is Tanmay's to write.
+- **Infra:**
+  - CI is green; the gitleaks licence secret is set.
+  - Redis is reached over `REDIS_URL` (`rediss://` native protocol to Upstash, not its REST API).
+  - Postgres (Neon) is reachable but not used by app code yet.
+- **Next up: Day 6 slot filling.** The full plan is in [plan-day-6.md](plan-day-6.md).
+- **PR hygiene:** turn on "Automatically delete head branches" in the repo settings. Two stacked
+  PRs (#6, #8) merged into their base branch instead of `main`.
 
 ---
 
@@ -254,13 +262,17 @@ Headline items only, so the board is complete. Each gets its own planning pass w
 ### Day 5 — Jev, and the latency decision
 *Done when: routing accuracy reported for both engines; a written recommendation on embedding
 latency.* Detail in [plan-days-4-5.md](plan-days-4-5.md#day-5--jev-and-the-latency-decision).
-- [ ] **T** Jev Playground session (needs your TypeSafe account): confirm the real request/response
-  for the three questions; record it in `docs/jev-notes.md`. *Everything below waits on this.*
-- [ ] **T** `services/llm/jev.py` — the only module that talks to TypeSafe; `JevError(UpstreamError)`.
-- [ ] **T** `JevEngine` behind the Day 4 `DecisionEngine` interface; falls back to `RuleEngine` on a
-  Jev error or a response slower than ~400 ms (decision budget < 500 ms).
-- [ ] **T** `eval_run.py --engine both`; report both engines side by side (routing accuracy, action
-  answered rate, latency, disagreements). The higher routing accuracy becomes the default.
+- [x] **T** Jev access confirmed and recorded in [jev-notes.md](jev-notes.md). *Through JevStation
+  (per-evaluation credits, 12 questions per request); 3.5–7 s per live call vs a 500 ms budget.*
+- [x] **T** `services/llm/jev.py` — the only module that talks to Jev; `JevError(UpstreamError)`.
+- [x] **T** Both engines on the full eval set (`scripts/jev_compare.py`, batches of 10, cached,
+  27 credits): **rules 97% vs Jev 91%** routing accuracy; action answered 0% vs 3%. **Rules stays
+  the default.**
+- [x] **T** Decision: Jev is kept as an **offline benchmark, not a fallback** — slower, less
+  reliable and less accurate than the rule engine
+  ([jev-notes.md](jev-notes.md#decision-2026-10-15)).
+- [ ] ~~**T** Live `JevEngine` with a rules fallback~~ — *not built: every live call would exceed the
+  decision budget and spend a credit. Revisit only with a direct TypeSafe key.*
 - [x] **T** Latency spike: a local fastembed dense model vs `qwen3-embedding-8b` on the eval set
   (speed, hit@1, router accuracy); written recommendation before Day 8. *Done 2026-10-15: Redis
   query cache shipped (2.6 s → 30–60 ms on a repeat); spike in `scripts/latency_spike.py`. Keep
@@ -271,12 +283,21 @@ latency.* Detail in [plan-days-4-5.md](plan-days-4-5.md#day-5--jev-and-the-laten
 - [ ] **P** Webhook outbox with HMAC signing and backoff retry.
 
 ### Day 6 — slot filling
-*Done when: a UAT extension SR raised from one message plus one follow-up.*
-- [ ] **T** Redis slot-filling state (`conversation:{user_id}`, 30-min TTL, max 2 follow-up turns);
-  duplicate check (no second open SR per user + category); `sr_requests` table.
-- [ ] **T** Record every `ESCALATE` in `sr_requests` (`MANUAL_ESCALATION`) so a person can pick it
-  up, then change `ESCALATE_REPLY` back to "flagged for the service desk". Until then the reply
-  tells the user to contact the desk directly — nothing is persisted.
+*Done when: a UAT extension SR raised from one message plus one follow-up.* Detail in
+[plan-day-6.md](plan-day-6.md).
+- [ ] **T** `services/conversation.py`: `conversation:{user_id}` in Redis (30-min TTL) via new
+  `redis_store` JSON helpers. Redis down means single-turn, never a 500.
+- [ ] **T** Slot-filling flow in `pipeline.handle_message`: cancel; re-extract on the original
+  message plus follow-ups and merge; a new ask resets; complete raises the SR; at most 2
+  follow-ups, then ESCALATE.
+- [ ] **T** `RuleEngine.complete_sr()`: rule 6 applies to the merged fields (e.g. a prod
+  environment given in the follow-up still needs approval).
+- [ ] **T** `services/state/postgres_store.py` + `migrations/001_sr_requests.sql` +
+  `scripts/migrate.py`. Record raised SRs and escalations; a failed write never loses the SR.
+- [ ] **T** Record every `ESCALATE`, then change `ESCALATE_REPLY` to "flagged for the service desk"
+  (falling back to "contact the desk" if the write fails).
+- [ ] **T** Duplicate check (F5): `ticketing.list_open_srs(user_id)` before creating; an open SR
+  in the same category gets an "already open" reply.
 - [ ] **P** UAT auto-revert scheduler; approver and note on status changes.
 
 ### Day 7 — notifications · **Checkpoint 2**

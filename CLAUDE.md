@@ -10,7 +10,8 @@ requests into correctly categorised Service Requests (SRs) it tracks to closure.
 
 The authoritative spec is `../SR Resolution Bot — Final PRD & 10-Day Roadmap.md`. **Read it before
 making design decisions** — it supersedes the older "Phase 0 / Phase 1" framing that earlier versions
-of this repo used. The current task breakdown lives in [docs/task.md](docs/task.md).
+of this repo used. The current task breakdown lives in [docs/task.md](docs/task.md); the next day's
+design is in [docs/plan-day-6.md](docs/plan-day-6.md).
 
 QueryDesk is two services behind one contract:
 
@@ -72,8 +73,9 @@ Everything after SR creation is async (webhook → Redis → Celery).
 - **One module owns each external dependency**, and nothing else may talk to it directly:
   `services/llm/fireworks.py` (LLM + embeddings), `services/retrieval/qdrant_store.py` (vector
   search), `services/retrieval/sparse.py` (BM25), `services/ticketing/client.py` (the ticketing
-  service), `services/state/redis_store.py` (Redis). Each raises a subclass of `UpstreamError` (`core/errors.py`), and the routers map that
-  whole family to HTTP 502 in one place.
+  service), `services/state/redis_store.py` (Redis), `services/llm/jev.py` (Jev, via JevStation).
+  Each raises a subclass of `UpstreamError` (`core/errors.py`), and the routers map that whole
+  family to HTTP 502 in one place.
 - `services/catalog.py` is the only app-code reader of `categories.json` (invariant #3); ask it for
   a category's name, approval rule or required fields.
 - **`core/config.py` is the only reader of the environment.** Nothing else touches `os.environ`;
@@ -141,10 +143,12 @@ Retrieval scores can't prevent it (eval: 86% of action requests clear `confidenc
 2–3 require `signals.classify()` to say *not an action*. Any change to `signals.py` must keep
 `tests/unit/test_signals.py` green and be re-measured with the eval (target ≤ 5%).
 
-The decision layer ships as a **rule engine first, behind an interface**, with TypeSafe Jev as a
-swappable implementation. This is deliberate (PRD risk table): Jev's request shape isn't known until
-the Playground session, so it must never block the critical path. `TYPESAFE_API_KEY` stays unused
-until the Jev engine lands (Day 5, `docs/plan-days-4-5.md`).
+The decision layer ships as a **rule engine behind an interface**. Jev was measured against it on
+Day 5 (`docs/jev-notes.md`): rules 97% vs Jev 91% routing accuracy, and Jev takes 3.5–7 s per call
+through JevStation, so **the rule engine is the default and Jev is not on the `/chat` path**.
+`TYPESAFE_API_KEY` is a JevStation key; every evaluation spends a limited credit, so never call Jev
+from tests (mock it with respx) and run `scripts/jev_compare.py` with a `--budget`. Its cache under
+`eval/results/jev_cache/` makes re-runs free.
 
 Until the partner's ticketing service exists, `tests/fakes/fake_ticketing.py` implements the PRD
 v1.1 contract (idempotency key, 400 on an unknown category) for tests and manual runs. Field names
@@ -156,7 +160,10 @@ Each service owns its own Neon Postgres database; they share nothing but the API
 
 - **Qdrant**: `kb_chunks` (named vectors `dense` + `bm25`) and `categories` (dense only).
 - **Postgres** (`sr_orchestrator`, PRD Day 6+): `sr_requests`, `decision_logs`, `notifications`.
-- **Redis**: `conversation:{user_id}` slot-filling state, 30-minute TTL; also the Celery broker.
+- **Redis**: reached over `REDIS_URL` (`rediss://`, the native protocol to Upstash, never its REST
+  API), only through `services/state/redis_store.py`. Holds the query-embedding cache
+  (`qemb:*`), `conversation:{user_id}` slot-filling state (30-minute TTL, Day 6:
+  `docs/plan-day-6.md`) and the Celery broker.
   Run dev workers with `--without-gossip --without-mingle --without-heartbeat` — an idle Celery
   worker will otherwise burn the Upstash free-tier command quota.
 
@@ -164,4 +171,4 @@ Each service owns its own Neon Postgres database; they share nothing but the API
 
 `.env` is gitignored and holds live credentials; `gitleaks` runs in CI. Never commit it, never paste
 key values into code, logs or test fixtures. `FIREWORKS_API_KEY` is required for ingestion and the
-answer path; `TYPESAFE_API_KEY` is unused until Day 4–5.
+answer path; `TYPESAFE_API_KEY` (JevStation) is used only by `scripts/jev_compare.py`.

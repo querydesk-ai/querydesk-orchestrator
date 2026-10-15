@@ -35,3 +35,7 @@ class TicketingError(UpstreamError):
 
 class RedisStoreError(UpstreamError):
     """Redis failed or isn't configured."""
+
+
+class JevError(UpstreamError):
+    """Jev (via JevStation) failed, returned an unusable response, or isn't configured."""
