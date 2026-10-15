@@ -3,9 +3,6 @@
 .env.*
 !.env.example
 
-# Knowledge-base content is supplied per-deployment, not versioned here.
-data/kb/
-
 # Virtualenvs
 venv/
 .venv/
@@ -15,10 +12,12 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
+.ruff_cache/
 
 # Local tooling
 .vscode/
 .idea/
+*.code-workspace
 *.log
 
 # Eval runs (regenerate with scripts/eval_run.py)

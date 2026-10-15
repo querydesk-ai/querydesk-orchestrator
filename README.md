@@ -36,7 +36,8 @@ cp .env.example .env
 
 ## Ingest the knowledge base
 
-Put your KB articles in `data/kb/*.md`, each with front matter:
+The 11 knowledge-base articles live in `data/kb/*.md` (one per category plus a general service-desk
+article, written for this project). Each has front matter:
 
 ```markdown
 ---
@@ -171,7 +172,7 @@ tests/
 data/
   categories.json               # the 10 categories — single source of truth
   decision_rules.json           # rule 6: force approval / escalation
-  kb/                           # knowledge-base articles (gitignored)
+  kb/                           # the 11 knowledge-base articles
 eval/eval_set.jsonl             # 87 labelled queries
 docs/                           # task board, Day 4–5 plan, eval reports
 scripts/

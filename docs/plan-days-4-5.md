@@ -121,7 +121,7 @@ extract required fields, so the answer path gets no extra call. Jev may replace 
   - **action requests answered with an article**: target ≤ 5%
   - a confusion table
   - decision latency (target < 500 ms excluding the LLM extraction, which is reported separately)
-- Written to `docs/eval-report-v1-day4.md`. If a target misses, iterate on the signal rules and
+- Written to `docs/eval-report-v1.md`. If a target misses, iterate on the signal rules and
   record each iteration.
 
 ### Step 8: Live end-to-end (stand-in Checkpoint 1)

@@ -1,5 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
+from importlib.metadata import version
 
 from fastapi import FastAPI
 
@@ -40,7 +41,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="QueryDesk Orchestrator",
-    version="0.3.0",
+    version=version("querydesk-orchestrator"),
     lifespan=lifespan,
 )
 

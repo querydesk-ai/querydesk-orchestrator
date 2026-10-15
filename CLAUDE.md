@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 company. It answers questions the knowledge base covers (citing the source article) and turns action
 requests into correctly categorised Service Requests (SRs) it tracks to closure.
 
-The authoritative spec is `../../SR Resolution Bot — Final PRD & 10-Day Roadmap.md`. **Read it before
+The authoritative spec is `../SR Resolution Bot — Final PRD & 10-Day Roadmap.md`. **Read it before
 making design decisions** — it supersedes the older "Phase 0 / Phase 1" framing that earlier versions
 of this repo used. The current task breakdown lives in [docs/task.md](docs/task.md).
 

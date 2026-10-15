@@ -10,8 +10,8 @@ than piling up duplicates. Use --recreate only when the collection schema
 itself changes.
 
 Usage:
-    python scripts/ingest.py
-    python scripts/ingest.py --recreate
+    uv run scripts/ingest.py
+    uv run scripts/ingest.py --recreate
 """
 
 import argparse
