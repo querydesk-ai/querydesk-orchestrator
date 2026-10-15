@@ -18,8 +18,9 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
   `querydesk-docs` (contract v1.1) is Tanmay's to write.
 - **CI:** the `secrets` job fails until the `GITLEAKS_LICENSE` repo secret is set (the tests job
   passes).
-- **Next up: Day 5.** Jev (Playground session 2026-10-15) and the latency work: a Redis cache for
-  query embeddings plus a local-embedding spike.
+- **Day 5 done (2026-10-15):** Redis query cache + local-embedding spike
+  ([latency-recommendation.md](latency-recommendation.md)); Jev vs rules on the full eval set —
+  rules 97%, Jev 91%, rules stays default ([jev-notes.md](jev-notes.md)). **Next: Day 6 slot filling.**
 - **Plan for Days 4–5:** [plan-days-4-5.md](plan-days-4-5.md) — the steps, the decisions behind
   them, and each day's definition of done.
 
@@ -254,13 +255,14 @@ Headline items only, so the board is complete. Each gets its own planning pass w
 ### Day 5 — Jev, and the latency decision
 *Done when: routing accuracy reported for both engines; a written recommendation on embedding
 latency.* Detail in [plan-days-4-5.md](plan-days-4-5.md#day-5--jev-and-the-latency-decision).
-- [ ] **T** Jev Playground session (needs your TypeSafe account): confirm the real request/response
-  for the three questions; record it in `docs/jev-notes.md`. *Everything below waits on this.*
-- [ ] **T** `services/llm/jev.py` — the only module that talks to TypeSafe; `JevError(UpstreamError)`.
-- [ ] **T** `JevEngine` behind the Day 4 `DecisionEngine` interface; falls back to `RuleEngine` on a
-  Jev error or a response slower than ~400 ms (decision budget < 500 ms).
-- [ ] **T** `eval_run.py --engine both`; report both engines side by side (routing accuracy, action
-  answered rate, latency, disagreements). The higher routing accuracy becomes the default.
+- [x] **T** Jev access confirmed and recorded in [jev-notes.md](jev-notes.md). *Through JevStation
+  (per-evaluation credits, 12 questions per request); 3.5–7 s per live call vs a 500 ms budget.*
+- [x] **T** `services/llm/jev.py` — the only module that talks to Jev; `JevError(UpstreamError)`.
+- [x] **T** Both engines on the full eval set (`scripts/jev_compare.py`, batches of 10, cached,
+  27 credits): **rules 97% vs Jev 91%** routing accuracy; action answered 0% vs 3%. **Rules stays
+  the default.**
+- [ ] ~~**T** Live `JevEngine` with a rules fallback~~ — *not built: every live call would exceed the
+  decision budget and spend a credit. Revisit only with a direct TypeSafe key.*
 - [x] **T** Latency spike: a local fastembed dense model vs `qwen3-embedding-8b` on the eval set
   (speed, hit@1, router accuracy); written recommendation before Day 8. *Done 2026-10-15: Redis
   query cache shipped (2.6 s → 30–60 ms on a repeat); spike in `scripts/latency_spike.py`. Keep

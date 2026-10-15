@@ -29,7 +29,7 @@ uv sync                          # creates .venv (Python 3.11) from uv.lock, dev
 
 cp .env.example .env
 # Fill in FIREWORKS_API_KEY and the QDRANT_* values at minimum.
-# TICKETING_BASE_URL defaults to the stand-in below; TYPESAFE_API_KEY is unused until Day 5.
+# TICKETING_BASE_URL defaults to the stand-in below; TYPESAFE_API_KEY is a JevStation key, used only by scripts/jev_compare.py.
 ```
 
 `.env` must sit in this directory (next to `.env.example`), not inside `src/`.
@@ -122,6 +122,7 @@ uv run scripts/eval_run.py                  # writes eval/results/<timestamp>.js
 uv run scripts/eval_report.py               # docs/eval-report-latest.md + threshold proposals
 uv run scripts/eval_report.py --out docs/eval-report-vN.md --title "Eval report vN"
 uv run --with psutil scripts/latency_spike.py   # local embedding models vs qwen3 (no API key)
+uv run scripts/jev_compare.py --budget 0      # Jev vs rule signals; cached batches are free
 ```
 
 The report proposes thresholds but never edits config — change them deliberately and record the
@@ -154,6 +155,7 @@ src/querydesk/
     rag.py                      # retrieve() + generate() a grounded answer
     catalog.py                  # the only app-code reader of categories.json
     llm/fireworks.py            # the only module that talks to Fireworks
+    llm/jev.py                  # the only module that talks to Jev (JevStation; eval only)
     retrieval/
       query.py                  # embed a message once, shared by retrieval and the router
       qdrant_store.py           # the only module that talks to Qdrant
@@ -182,6 +184,7 @@ scripts/
   eval_run.py                   # run the eval set through retrieval, router + decision layer
   eval_report.py                # report + threshold proposals
   latency_spike.py              # local embedding models vs qwen3, in-memory Qdrant
+  jev_compare.py                # Jev vs rule signals on the eval set (spends JevStation credits)
   check_services.py             # Qdrant/Redis/Postgres reachability
 ```
 
