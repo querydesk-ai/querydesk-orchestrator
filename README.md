@@ -8,7 +8,7 @@ Built with a partner who owns the Spring Boot ticketing service (`querydesk-tick
 services share nothing but the API contract and `categories.json`. Full spec and the task board:
 [docs/task.md](docs/task.md) and the project PRD.
 
-**Current state:** PRD Days 1–4 done.
+**Current state:** PRD Days 1–5 done.
 
 - **Days 1–2:** hybrid retrieval (dense + BM25) and cited answers.
 - **Day 3:** semantic router over the 10 categories, thresholds calibrated on the eval set.
@@ -17,9 +17,14 @@ services share nothing but the API contract and `categories.json`. Full spec and
   (87 rows): **routing accuracy 97%** (target ≥ 90%), **action requests answered with an article
   0%** (target ≤ 5%) — [docs/eval-report-v2.md](docs/eval-report-v2.md).
 
-**Next:** Day 5 — the TypeSafe Jev engine (waits on a Playground session) and the embedding latency
-decision. Slot filling across turns (Redis), decision logs in Postgres and notifications are Days
-6–10. The partner's ticketing service doesn't exist yet; a stand-in implements its contract.
+- **Day 5:** a Redis cache for query embeddings, a local-embedding spike
+  ([docs/latency-recommendation.md](docs/latency-recommendation.md)), and Jev measured against the
+  rule engine: rules 97% vs Jev 91%, so the rule engine stays the default
+  ([docs/jev-notes.md](docs/jev-notes.md)).
+
+**Next:** Day 6 — slot filling across turns (Redis), a duplicate-SR check and the `sr_requests`
+table ([docs/plan-day-6.md](docs/plan-day-6.md)). Notifications, status answers and the chat page
+are Days 7–8. The partner's ticketing service isn't pushed yet; a stand-in implements its contract.
 
 ## Setup
 
@@ -178,7 +183,7 @@ data/
   decision_rules.json           # rule 6: force approval / escalation
   kb/                           # the 11 knowledge-base articles
 eval/eval_set.jsonl             # 87 labelled queries
-docs/                           # task board, Day 4–5 plan, eval reports
+docs/                           # task board, day plans, eval reports, Jev + latency notes
 scripts/
   ingest.py                     # build the Qdrant collections
   eval_run.py                   # run the eval set through retrieval, router + decision layer

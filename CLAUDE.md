@@ -10,7 +10,8 @@ requests into correctly categorised Service Requests (SRs) it tracks to closure.
 
 The authoritative spec is `../SR Resolution Bot — Final PRD & 10-Day Roadmap.md`. **Read it before
 making design decisions** — it supersedes the older "Phase 0 / Phase 1" framing that earlier versions
-of this repo used. The current task breakdown lives in [docs/task.md](docs/task.md).
+of this repo used. The current task breakdown lives in [docs/task.md](docs/task.md); the next day's
+design is in [docs/plan-day-6.md](docs/plan-day-6.md).
 
 QueryDesk is two services behind one contract:
 
@@ -159,7 +160,10 @@ Each service owns its own Neon Postgres database; they share nothing but the API
 
 - **Qdrant**: `kb_chunks` (named vectors `dense` + `bm25`) and `categories` (dense only).
 - **Postgres** (`sr_orchestrator`, PRD Day 6+): `sr_requests`, `decision_logs`, `notifications`.
-- **Redis**: `conversation:{user_id}` slot-filling state, 30-minute TTL; also the Celery broker.
+- **Redis**: reached over `REDIS_URL` (`rediss://`, the native protocol to Upstash, never its REST
+  API), only through `services/state/redis_store.py`. Holds the query-embedding cache
+  (`qemb:*`), `conversation:{user_id}` slot-filling state (30-minute TTL, Day 6:
+  `docs/plan-day-6.md`) and the Celery broker.
   Run dev workers with `--without-gossip --without-mingle --without-heartbeat` — an idle Celery
   worker will otherwise burn the Upstash free-tier command quota.
 
