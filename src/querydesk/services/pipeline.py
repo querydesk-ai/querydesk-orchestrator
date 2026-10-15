@@ -1,10 +1,15 @@
 """
 One chat message, end to end:
 
-  open conversation? -> continue it (re-extract, merge, raise / ask / escalate)
+  open conversation? -> extract from the reply -> merge -> raise / ask again / escalate
   otherwise:  embed once -> retrieve + route (concurrently) -> classify -> decide -> act
 
-`_act` and `_continue` are the only places a decision turns into side effects:
+A reply that states no field is judged as a fresh message first: if that
+would only escalate (rule 5, it makes no sense on its own) it counts as an
+unhelpful answer to the open conversation; anything else (a question, a new
+request) closes the conversation and is handled normally.
+
+`_act` and `_advance` are the only places a decision turns into side effects:
 generating an answer, creating an SR, asking for missing details (which opens
 a slot-filling conversation, docs/plan-day-6.md), or escalating. Raised SRs
 and escalations are recorded in sr_requests. Every message logs one
@@ -55,6 +60,7 @@ STATUS_REPLY = (
     "You'll be notified automatically whenever one of your requests changes status."
 )
 CANCELLED_REPLY = "OK, I've cancelled that request. Nothing was raised."
+NOTHING_TO_CANCEL_REPLY = "There's no open request to cancel."
 DISCLAIMER = (
     '\n\nThis may not fully cover your case. If it doesn\'t, say "raise a request" '
     "and I'll open one for you."
@@ -120,12 +126,17 @@ async def _already_open(
     details as well as before raising, so nobody fills in a form for an SR
     they can't have. The idempotency key stays as the backstop for a retry
     that races this check.
+
+    Reported as RAISE_SR with the existing SR's id, like an idempotent replay:
+    the user's request maps to that SR, not to a form.
     """
     open_srs = await ticketing.list_open_srs(user_id)
     existing = next((r for r in open_srs if r.category_id == out.category_id), None)
     if existing is None:
         return None
     category = catalog.get(out.category_id)
+    out.overrides.append(f"duplicate_of: SR {existing.id}")
+    out.decision = Decision.RAISE_SR
     return ChatResult(
         reply=(
             f"You already have SR {existing.id} open for {category.name} "
@@ -191,9 +202,18 @@ async def _raise_sr(
 
 
 async def _escalate(
-    user_id: str, query: str, out: DecisionOutput, confidence: float | None
+    user_id: str,
+    query: str,
+    out: DecisionOutput,
+    confidence: float | None,
+    replies: tuple[str, str] = (ESCALATE_REPLY, ESCALATE_FALLBACK_REPLY),
 ) -> ChatResult:
-    """A fixed reply and no LLM call, recorded so the desk actually sees it."""
+    """
+    A fixed reply and no LLM call, recorded so the desk actually sees it.
+    `replies` is (recorded, not recorded): only a recorded escalation may say
+    it has been flagged.
+    """
+    recorded, fallback = replies
     try:
         await postgres_store.record_escalation(
             user_id=user_id,
@@ -201,12 +221,26 @@ async def _escalate(
             details={"query": query, "fields": out.fields, "missing": out.missing_fields},
             retrieval_confidence=confidence,
         )
-        reply = ESCALATE_REPLY
+        reply = recorded
     except PostgresStoreError as e:
         logger.error("Escalation not recorded in sr_requests: %s", e)
-        reply = ESCALATE_FALLBACK_REPLY
+        reply = fallback
+    # No SR, so nothing to approve: don't echo the category's approval rule.
     return ChatResult(
-        reply=reply, resolution_type=ResolutionType.MANUAL_ESCALATION, **_base(out, confidence)
+        reply=reply,
+        resolution_type=ResolutionType.MANUAL_ESCALATION,
+        **{**_base(out, confidence), "requires_approval": None},
+    )
+
+
+def _cap_replies(missing: list[str]) -> tuple[str, str]:
+    """F4's cap: say why this went to a person."""
+    still = (
+        f"I still don't have the {_join([_readable(f) for f in missing])} after a couple of tries"
+    )
+    return (
+        f"{still}, so I've flagged this for the service desk team. A person will pick it up.",
+        f"{still}. Please contact the service desk team directly so a person can pick it up.",
     )
 
 
@@ -268,8 +302,11 @@ def _log(
     confidence: float | None = None,
     error: str | None = None,
 ) -> None:
-    """One line per message. A follow-up turn has no retrieval or router: it searched nothing."""
-    if retrieval is not None:
+    """
+    One line per message. A follow-up that stated a field searched nothing,
+    so it has no retrieval or router.
+    """
+    if retrieval is not None and confidence is None:
         confidence = retrieval.top_dense_score
     decision_log.info(
         json.dumps(
@@ -301,75 +338,55 @@ def _log(
     )
 
 
-async def _continue(
-    user_id: str, query: str, conv: Conversation, engine: DecisionEngine
-) -> ChatResult | None:
+async def _advance(user_id: str, query: str, conv: Conversation, out: DecisionOutput) -> ChatResult:
     """
-    The user's reply in an open slot-filling conversation. Returns None when
-    the message doesn't answer it: the state is cleared and the caller
-    handles the message as a fresh one.
+    One reply in an open conversation, decided (`out` from complete_sr): raise
+    the SR, ask again for what's still missing, or escalate — forced by rule
+    6, or F4's cap after the last follow-up we allow. The escalation carries
+    the conversation's category, fields and transcript, so the desk has them.
     """
-    start = time.perf_counter()
-    intent = classify(query)
     turn = conv.follow_ups + 1
-    category = catalog.get(conv.category_id)
+    transcript = conv.transcript(query)
     confidence = conv.retrieval_confidence
 
-    if _CANCEL.match(query):
+    if out.decision is Decision.RAISE_SR:
         await conversation.clear(user_id)
-        out = DecisionOutput(
-            Decision.CANCELLED, ResolutionType.AUTO_SR, 0, engine.name, conv.category_id
-        )
-        result = ChatResult(
-            reply=CANCELLED_REPLY, resolution_type=out.resolution_type, **_base(out, confidence)
-        )
-        timings = {"total": round((time.perf_counter() - start) * 1000, 1)}
-        _log(user_id, query, intent, out, result, timings, turn=turn, confidence=confidence)
-        return result
+        return await _raise_sr(user_id, transcript, out, confidence)
 
-    # Re-extract over the whole exchange, so "till 11 PM" keeps its context.
-    transcript = conv.transcript(query)
-    extract_start = time.perf_counter()
-    found = await extraction.extract_fields(transcript, category)
-    extraction_ms = round((time.perf_counter() - extract_start) * 1000, 1)
+    if out.decision is Decision.COLLECT_DETAILS and turn < settings.conversation_max_follow_ups:
+        conv.fields, conv.missing = out.fields, out.missing_fields
+        conv.turns.append(query)
+        conv.follow_ups = turn
+        await conversation.save(conv)
+        return _ask_for(out, confidence)
 
-    # Values already collected are never overwritten.
-    new = {k: v for k, v in found.fields.items() if k not in conv.fields}
-    if not new:
-        # Nothing in it answers what we asked: the user has moved on (a new
-        # request, a question, a status ask).
-        await conversation.clear(user_id)
-        return None
+    await conversation.clear(user_id)
+    if out.decision is not Decision.COLLECT_DETAILS:  # rule 6 forced it
+        return await _escalate(user_id, transcript, out, confidence)
+    out.overrides.append(f"max_follow_ups: {settings.conversation_max_follow_ups} reached")
+    out.decision = Decision.ESCALATE
+    out.resolution_type = ResolutionType.MANUAL_ESCALATION
+    return await _escalate(
+        user_id, transcript, out, confidence, replies=_cap_replies(out.missing_fields)
+    )
 
-    out = await engine.complete_sr(conv.category_id, {**conv.fields, **new})
-    out.extraction_ok = found.ok
-    out.extraction_ms = extraction_ms
+
+async def _logged_advance(
+    user_id: str,
+    query: str,
+    conv: Conversation,
+    out: DecisionOutput,
+    intent: Intent,
+    timings: dict,
+    start: float,
+    *,
+    turn: int,
+    router: RouterResult | None = None,
+) -> ChatResult:
     decided = time.perf_counter()
-
     result, error = None, None
     try:
-        if out.decision is Decision.RAISE_SR:
-            await conversation.clear(user_id)
-            result = await _raise_sr(user_id, transcript, out, confidence)
-        elif (
-            out.decision is Decision.COLLECT_DETAILS and turn < settings.conversation_max_follow_ups
-        ):
-            conv.fields, conv.missing = out.fields, out.missing_fields
-            conv.turns.append(query)
-            conv.follow_ups = turn
-            await conversation.save(conv)
-            result = _ask_for(out, confidence)
-        else:
-            # A forced escalation (rule 6), or F4's cap: fields still missing
-            # after the last follow-up we allow.
-            if out.decision is Decision.COLLECT_DETAILS:
-                out.overrides.append(
-                    f"max_follow_ups: {settings.conversation_max_follow_ups} reached"
-                )
-                out.decision = Decision.ESCALATE
-                out.resolution_type = ResolutionType.MANUAL_ESCALATION
-            await conversation.clear(user_id)
-            result = await _escalate(user_id, transcript, out, confidence)
+        result = await _advance(user_id, query, conv, out)
         return result
     except Exception as e:
         error = type(e).__name__
@@ -377,8 +394,7 @@ async def _continue(
     finally:
         done = time.perf_counter()
         timings = {
-            "decide": round((decided - start) * 1000 - extraction_ms, 1),
-            "extraction": extraction_ms,
+            **timings,
             "act": round((done - decided) * 1000, 1),
             "total": round((done - start) * 1000, 1),
         }
@@ -390,24 +406,83 @@ async def _continue(
             result,
             timings,
             turn=turn,
-            confidence=confidence,
+            router=router,
+            confidence=conv.retrieval_confidence,
             error=error,
         )
 
 
-async def handle_message(
-    user_id: str, query: str, engine: DecisionEngine | None = None
-) -> ChatResult:
-    engine = engine or get_engine()
-    conv = await conversation.load(user_id)
-    if conv is not None:
-        result = await _continue(user_id, query, conv, engine)
-        if result is not None:
-            return result
-    return await _fresh(user_id, query, engine)
+async def _continue(
+    user_id: str, query: str, conv: Conversation, engine: DecisionEngine
+) -> ChatResult | None:
+    """
+    The user's reply in an open slot-filling conversation. Returns None when
+    the reply states no field at all; the caller then judges it as a fresh
+    message (see the module docstring).
+    """
+    start = time.perf_counter()
+    intent = classify(query)
+    turn = conv.follow_ups + 1
+
+    if _CANCEL.match(query):
+        await conversation.clear(user_id)
+        out = DecisionOutput(
+            Decision.CANCELLED, ResolutionType.AUTO_SR, 0, engine.name, conv.category_id
+        )
+        result = ChatResult(
+            reply=CANCELLED_REPLY,
+            resolution_type=out.resolution_type,
+            **_base(out, conv.retrieval_confidence),
+        )
+        timings = {"total": round((time.perf_counter() - start) * 1000, 1)}
+        _log(
+            user_id,
+            query,
+            intent,
+            out,
+            result,
+            timings,
+            turn=turn,
+            confidence=conv.retrieval_confidence,
+        )
+        return result
+
+    # Only the reply is a source of values; the original request is context.
+    extract_start = time.perf_counter()
+    found = await extraction.extract_follow_up(
+        conv.original_query, query, catalog.get(conv.category_id), conv.fields, conv.missing
+    )
+    extraction_ms = round((time.perf_counter() - extract_start) * 1000, 1)
+    if not found.fields:
+        return None
+
+    # A value the reply states wins: it is either new or a correction
+    # ("it's UAT-3" after a vague "UAT"). Grounding guarantees it was said.
+    corrected = [k for k, v in found.fields.items() if k in conv.fields and conv.fields[k] != v]
+    out = await engine.complete_sr(conv.category_id, {**conv.fields, **found.fields})
+    out.overrides.extend(f"corrected: {k}" for k in corrected)
+    out.extraction_ok = found.ok
+    out.extraction_ms = extraction_ms
+    timings = {
+        "decide": round((time.perf_counter() - start) * 1000 - extraction_ms, 1),
+        "extraction": extraction_ms,
+    }
+    return await _logged_advance(user_id, query, conv, out, intent, timings, start, turn=turn)
 
 
-async def _fresh(user_id: str, query: str, engine: DecisionEngine) -> ChatResult:
+@dataclass
+class _Fresh:
+    """A fresh message, decided but not yet acted on."""
+
+    retrieval: rag.Retrieval
+    router: RouterResult
+    intent: Intent
+    out: DecisionOutput
+    start: float
+    timings: dict
+
+
+async def _decide_fresh(query: str, engine: DecisionEngine) -> _Fresh:
     start = time.perf_counter()
 
     vectors = await embed_query_vectors(query)
@@ -444,10 +519,21 @@ async def _fresh(user_id: str, query: str, engine: DecisionEngine) -> ChatResult
         )
     )
     decided = time.perf_counter()
+    timings = {
+        "embed": round((embedded - start) * 1000, 1),
+        "search": round((searched - embedded) * 1000, 1),
+        # The decision layer's own cost; the LLM extraction is reported apart.
+        "decide": round((decided - searched) * 1000 - (out.extraction_ms or 0), 1),
+        "extraction": out.extraction_ms,
+    }
+    return _Fresh(retrieval, router, intent, out, start, timings)
 
+
+async def _act_fresh(user_id: str, query: str, fresh: _Fresh) -> ChatResult:
+    acting = time.perf_counter()
     result, error = None, None
     try:
-        result = await _act(user_id, query, retrieval, out)
+        result = await _act(user_id, query, fresh.retrieval, fresh.out)
         return result
     except Exception as e:
         # The failed messages are the ones most worth auditing: log the
@@ -457,23 +543,66 @@ async def _fresh(user_id: str, query: str, engine: DecisionEngine) -> ChatResult
     finally:
         done = time.perf_counter()
         timings = {
-            "embed": round((embedded - start) * 1000, 1),
-            "search": round((searched - embedded) * 1000, 1),
-            # The decision layer's own cost; the LLM extraction is reported apart.
-            "decide": round((decided - searched) * 1000 - (out.extraction_ms or 0), 1),
-            "extraction": out.extraction_ms,
-            "act": round((done - decided) * 1000, 1),
-            "total": round((done - start) * 1000, 1),
+            **fresh.timings,
+            "act": round((done - acting) * 1000, 1),
+            "total": round((done - fresh.start) * 1000, 1),
         }
         _log(
             user_id,
             query,
-            intent,
-            out,
+            fresh.intent,
+            fresh.out,
             result,
             timings,
             turn=0,
-            retrieval=retrieval,
-            router=router,
+            retrieval=fresh.retrieval,
+            router=fresh.router,
             error=error,
         )
+
+
+async def handle_message(
+    user_id: str, query: str, engine: DecisionEngine | None = None
+) -> ChatResult:
+    engine = engine or get_engine()
+    conv = await conversation.load(user_id)
+
+    if conv is None and _CANCEL.match(query):
+        # Nothing open: don't search, escalate or record a bare "cancel".
+        out = DecisionOutput(Decision.CANCELLED, ResolutionType.AUTO_SR, 0, engine.name)
+        result = ChatResult(
+            reply=NOTHING_TO_CANCEL_REPLY, resolution_type=out.resolution_type, **_base(out, None)
+        )
+        _log(user_id, query, classify(query), out, result, {"total": 0.0}, turn=0)
+        return result
+
+    if conv is not None:
+        result = await _continue(user_id, query, conv, engine)
+        if result is not None:
+            return result
+
+    fresh = await _decide_fresh(query, engine)
+    if conv is None:
+        return await _act_fresh(user_id, query, fresh)
+
+    if fresh.out.decision is Decision.ESCALATE and fresh.out.rule == 5:
+        # Meaningless on its own ("not sure", "hmm"): an unhelpful answer to
+        # the open conversation, not a new request. Ask again, or escalate
+        # with the conversation's context at the cap.
+        out = await engine.complete_sr(conv.category_id, conv.fields)
+        out.overrides.append("unanswered: the reply stated no field")
+        return await _logged_advance(
+            user_id,
+            query,
+            conv,
+            out,
+            fresh.intent,
+            fresh.timings,
+            fresh.start,
+            turn=conv.follow_ups + 1,
+            router=fresh.router,
+        )
+
+    # A question, a status ask or a new request: the user has moved on.
+    await conversation.clear(user_id)
+    return await _act_fresh(user_id, query, fresh)
