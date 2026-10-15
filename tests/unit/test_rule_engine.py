@@ -282,6 +282,56 @@ async def test_rule6_never_turns_an_escalation_into_anything_else():
     assert out.decision is Decision.ESCALATE and out.overrides == []
 
 
+# --- complete_sr: fields collected over several turns (Day 6) --------------
+
+
+@pytest.mark.anyio
+async def test_complete_sr_with_every_field_raises_an_sr_without_extracting():
+    ex = StubExtractor()
+    out = await _engine(ex).complete_sr(
+        "it_uat_extension", {"environment": "UAT-2", "extend_until": "11 PM", "reason": "release"}
+    )
+
+    assert out.decision is Decision.RAISE_SR
+    assert out.resolution_type is ResolutionType.AUTO_SR
+    assert out.rule == 4
+    assert out.requires_approval is True  # approval "always" comes from the catalog
+    assert out.missing_fields == []
+    assert ex.calls == []
+
+
+@pytest.mark.anyio
+async def test_complete_sr_reports_only_the_fields_still_missing():
+    out = await _engine().complete_sr("it_uat_extension", {"environment": "UAT-2"})
+
+    assert out.decision is Decision.COLLECT_DETAILS
+    assert out.missing_fields == ["extend_until", "reason"]
+    assert out.fields == {"environment": "UAT-2"}
+
+
+@pytest.mark.anyio
+async def test_complete_sr_applies_rule6_to_merged_fields():
+    """A prod environment that arrives in a follow-up still needs approval."""
+    out = await _engine(rules=load_rules()).complete_sr(
+        "it_application_restart", {"application": "claims", "environment": "prod"}
+    )
+
+    assert out.decision is Decision.RAISE_SR
+    assert out.requires_approval is True
+    assert out.overrides
+
+
+@pytest.mark.anyio
+async def test_complete_sr_force_escalation_still_wins():
+    rules = parse_rules({"force_escalation": ["it_application_restart"]})
+    out = await _engine(rules=rules).complete_sr(
+        "it_application_restart", {"application": "claims", "environment": "UAT"}
+    )
+
+    assert out.decision is Decision.ESCALATE
+    assert out.overrides == ["force_escalation: it_application_restart"]
+
+
 # --- Rules file validation ---------------------------------------------------
 
 
