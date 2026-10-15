@@ -26,6 +26,8 @@ class Decision(StrEnum):
     RAISE_SR = "RAISE_SR"
     ESCALATE = "ESCALATE"
     STATUS_LOOKUP = "STATUS_LOOKUP"
+    # Not a rule outcome: the user cancelled an open slot-filling conversation.
+    CANCELLED = "CANCELLED"
 
 
 class ChatRequest(BaseModel):
