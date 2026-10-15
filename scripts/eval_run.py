@@ -31,7 +31,7 @@ from pathlib import Path
 # Allow running as a plain script without an editable install (src/ layout).
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from querydesk.core.config import BASE_DIR  # noqa: E402
+from querydesk.core.config import BASE_DIR, settings  # noqa: E402
 from querydesk.eval.schema import Kind, load_eval_set  # noqa: E402
 from querydesk.services.decision.engine import DecisionInput, get_engine  # noqa: E402
 from querydesk.services.decision.signals import classify  # noqa: E402
@@ -113,6 +113,8 @@ async def run_row(row, engine, with_tie_break: bool) -> dict:
 
 
 async def main(with_tie_break: bool) -> Path:
+    # Measure real embedding latency: a warm query cache would hide it.
+    settings.query_cache_enabled = False
     rows = load_eval_set()
     engine = get_engine()
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
