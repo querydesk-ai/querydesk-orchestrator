@@ -27,9 +27,16 @@ class Settings(BaseSettings):
     fireworks_chat_model: str = "accounts/fireworks/models/minimax-m3"
     fireworks_embed_model: str = "accounts/fireworks/models/qwen3-embedding-8b"
 
-    # TypeSafe Jev (decision layer) — unused until PRD Day 4; the rule engine
-    # ships first behind the same interface so Jev can't block the critical path.
+    # TypeSafe Jev, reached through JevStation (jevstation.com, an independent
+    # aggregator — the key is a JevStation key, not an api.typesafe.ai one).
+    # Billed per evaluation (one request: 1 credit for <= 5 questions and
+    # <= 8,000 chars of state, else 3), so batch messages into one request.
+    # Offline comparison only: a live call takes 3.5-7 s against a 500 ms
+    # decision budget (docs/jev-notes.md).
     typesafe_api_key: str = ""
+    jev_base_url: str = "https://jevstation.com/api/v1"
+    jev_model: str = "jev"
+    jev_timeout_s: float = 90.0
 
     # --- Infra -----------------------------------------------------------
     qdrant_url: str = ""
