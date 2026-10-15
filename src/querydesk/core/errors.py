@@ -37,5 +37,9 @@ class RedisStoreError(UpstreamError):
     """Redis failed or isn't configured."""
 
 
+class PostgresStoreError(UpstreamError):
+    """Postgres (the orchestrator's own Neon database) failed or isn't configured."""
+
+
 class JevError(UpstreamError):
     """Jev (via JevStation) failed, returned an unusable response, or isn't configured."""

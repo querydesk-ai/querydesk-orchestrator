@@ -34,8 +34,12 @@ def no_query_cache(monkeypatch):
     """
     Keep the suite offline even when a developer's .env sets REDIS_URL: the
     query-embedding cache is off unless a test turns it on (with fakeredis).
+    Redis and Postgres are unconfigured, so conversation state and SR records
+    can never reach a live store; tests that need them use fakes.
     """
     monkeypatch.setattr(settings, "query_cache_enabled", False)
+    monkeypatch.setattr(settings, "redis_url", "")
+    monkeypatch.setattr(settings, "postgres_dsn", "")
     redis_store._client = None
     yield
     redis_store._client = None
