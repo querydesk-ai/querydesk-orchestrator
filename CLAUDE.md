@@ -83,15 +83,21 @@ Everything after SR creation is async (webhook → Redis → Celery).
 - **`core/config.py` is the only reader of the environment.** Nothing else touches `os.environ`;
   import the shared `settings` instance instead of re-instantiating `Settings`.
 - `services/pipeline.py::handle_message()` is the whole `/chat` flow. It first loads
-  `conversation.load(user_id)`; an open conversation goes to `_continue()` (cancel → re-extract on
-  the whole exchange → merge, never overwriting → `engine.complete_sr()` → raise / ask again /
-  escalate after `conversation_max_follow_ups`). A reply that adds no field is a new message: the
-  state is cleared and the normal flow runs: embed once → `rag.retrieve()` + `router.route()`
-  concurrently → `signals.classify()` → `engine.decide()` → act (generate / create SR / ask for
-  fields and open a conversation / escalate) → one `querydesk.decision` log line with its `turn`
-  (PRD F10). The route in `api/routes/chat.py` stays a thin adapter.
+  `conversation.load(user_id)`; an open conversation goes to `_continue()` (cancel →
+  `extract_follow_up()` on **the reply only** → merge, where a stated value may correct a collected
+  one (`corrected:` override) → `engine.complete_sr()` → `_advance()`: raise / ask again / escalate
+  after `conversation_max_follow_ups`). A reply that states no field is decided as a fresh message
+  (`_decide_fresh()`, no side effects): a rule-5 `ESCALATE` means it made no sense on its own, so
+  it counts as an unhelpful follow-up (`unanswered:` override); anything else clears the
+  conversation and is acted on normally. The fresh flow: embed once → `rag.retrieve()` +
+  `router.route()` concurrently → `signals.classify()` → `engine.decide()` → act (generate / create
+  SR / ask for fields and open a conversation / escalate) → one `querydesk.decision` log line with
+  its `turn` (PRD F10). A bare "cancel" with nothing open is answered without a search or a record.
+  The route in `api/routes/chat.py` stays a thin adapter.
 - Before asking for details **and** before raising, `_already_open()` checks
-  `ticketing.list_open_srs()`: one open SR per user and category (F5). Raised SRs and escalations
+  `ticketing.list_open_srs()`: one open SR per user and category (F5), reported as `RAISE_SR` with
+  the existing `sr_id` (like an idempotent replay). An escalation at the follow-up cap records the
+  conversation's category, fields and transcript, and its reply names what's missing. Raised SRs and escalations
   are recorded in `sr_requests`; a failed write never loses the SR, and a failed escalation write
   falls back to "contact the desk" instead of "flagged".
 - `services/conversation.py` owns `conversation:{user_id}`. Redis down means single-turn, never a
@@ -105,7 +111,11 @@ Everything after SR creation is async (webhook → Redis → Celery).
 - `services/routing/router.py` reports the top-two categories and whether it is confident; it never
   decides answer-vs-SR — that is the decision layer's job.
 - `services/decision/`: `signals.py` (rule-based is-action / is-status), `extraction.py` (one LLM
-  call for required fields, **SR path only**; absent or unparseable = missing, never guessed),
+  call for required fields, **SR path only**; absent or unparseable = missing, never guessed;
+  `extract_follow_up()` reads only the latest reply, the original request is context, and every
+  value must appear in that reply (`_grounded()`) — never extract from a joined transcript, the
+  model copies sentences from it into fields. First-message extraction is not grounded: a
+  categorical reading like `change_type: "firewall change"` is fair there, and the eval measures it),
   `rules.py` (rule 6 from `data/decision_rules.json`, tighten-only, validated against the catalog),
   `engine.py` (`DecisionEngine` interface + `RuleEngine`, chosen by `decision_engine`).
 - Use the **async** Qdrant client (`AsyncQdrantClient`). The `/chat` path is async and the sync client

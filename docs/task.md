@@ -293,8 +293,21 @@ latency.* Detail in [plan-days-4-5.md](plan-days-4-5.md#day-5--jev-and-the-laten
   `redis_store` JSON helpers. Redis down means single-turn, never a 500.
 - [x] **T** Slot-filling flow in `pipeline.handle_message`: cancel; re-extract on the original
   message plus follow-ups and merge; a new ask resets; complete raises the SR; at most 2
-  follow-ups, then ESCALATE. *A reply that adds no field counts as a new message; a cancel is the
-  new `CANCELLED` decision.*
+  follow-ups, then ESCALATE. *A cancel is the new `CANCELLED` decision.*
+- [x] **T** Verification fixes (live check of PR #10 failed on a vague start):
+  - follow-ups are extracted from the reply only (`extract_follow_up`), never from a joined
+    transcript, which had copied the opening sentence into `reason`;
+  - every follow-up value must appear in the reply (`_grounded`). Not applied to the first
+    message: grounding there dropped `change_type: "firewall change"` on eval act-13;
+  - a stated value may correct a collected one ("it's UAT-3");
+  - a reply with no field that makes no sense on its own counts as an unhelpful follow-up instead
+    of silently dropping the conversation; the cap escalation records the conversation and names
+    what's missing;
+  - a bare "cancel" with nothing open records nothing; a duplicate is reported as `RAISE_SR`.
+  - Eval re-run (88 rows, 2026-10-15, thresholds unchanged): routing accuracy 95% (strict 93%),
+    action answered 0%, SR-bound category accuracy 100%, hit@k 100%. The only miss beyond v2's
+    three is the new near-miss row `oos-18` ("stop the claims app in UAT" → UAT extension, 0.4969
+    vs restart 0.4925): out of scope, but routed. Left for the router work, not tuned by hand.
 - [x] **T** `RuleEngine.complete_sr()`: rule 6 applies to the merged fields (e.g. a prod
   environment given in the follow-up still needs approval).
 - [x] **T** `services/state/postgres_store.py` + `migrations/001_sr_requests.sql` +
