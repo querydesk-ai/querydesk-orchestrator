@@ -11,7 +11,7 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
 
 - **Orchestrator lane: Days 1–4 done.** Days 1–3 merged (PR #1); Day 4 on `day4-decision-layer`.
   Eval v1 (83 rows): **routing accuracy 96%** (target ≥ 90%), **action requests answered with an
-  article 0%** (target ≤ 5%), informational citations 30/30 — `docs/eval-report-v1-day4.md`.
+  article 0%** (target ≤ 5%), informational citations 30/30 — `docs/eval-report-v1.md`.
 - **Day 4 code-review fixes (2026-10-11):** 502 mapping, same-day reopen keyed off the closed SR's
   number, tighter status/action signals, rule 4 narrowed to actions, decision logged on failure.
   Eval v2 (87 rows): **routing accuracy 97%**, action answered 0%, same 5 known misses —
@@ -228,7 +228,7 @@ score ≥ high).
   `latency_ms`; it moves into the `decision_logs` table with Postgres on Day 6.
 - [x] **T** Extend `eval_run.py` / `eval_report.py` with **routing accuracy** (decision matches the
   label, target ≥ 90%) and **action requests answered with an article** (target ≤ 5%). This becomes
-  the baseline the Day 5 Jev engine has to beat. *Result: 96% and 0% — `docs/eval-report-v1-day4.md`.*
+  the baseline the Day 5 Jev engine has to beat. *Result: 96% and 0% — `docs/eval-report-v1.md`.*
 - [x] **T** Decision layer latency under 500 ms on the eval run, excluding the LLM extraction call
   (report it separately). *Result: ~0 ms; extraction p50 2.0 s / p95 3.6 s on the SR path.*
 
