@@ -25,6 +25,8 @@ dependencies = [
 # Dev tooling. `uv sync` installs this group by default; uv.lock pins the full tree.
 [dependency-groups]
 dev = [
+  # fakeredis stands in for Redis (query cache, later slot-filling state).
+  "fakeredis==2.40.0",
   "pytest==9.1.1",
   # respx mocks the Fireworks HTTP API so the suite runs with no credentials.
   "respx==0.21.1",

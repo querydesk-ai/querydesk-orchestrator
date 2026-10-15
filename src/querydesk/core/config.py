@@ -56,6 +56,13 @@ class Settings(BaseSettings):
     chunk_overlap: int = 150
     embed_batch_size: int = 32
 
+    # --- Query-embedding cache (Redis) ------------------------------------
+    # Dense query embedding is the slowest step on /chat (~2 s), so repeated
+    # messages reuse the cached vector. Only active when REDIS_URL is set; a
+    # Redis failure is treated as a miss, never as a failed request.
+    query_cache_enabled: bool = True
+    query_cache_ttl_s: int = 7 * 24 * 3600
+
     # --- Generation ------------------------------------------------------
     # Every chat model on the account is a reasoning model: hidden reasoning
     # tokens are drawn from the same budget as the answer, so a budget that
