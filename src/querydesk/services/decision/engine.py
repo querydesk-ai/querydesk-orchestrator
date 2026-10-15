@@ -66,6 +66,14 @@ class DecisionEngine(Protocol):
 
     async def decide(self, inp: DecisionInput) -> DecisionOutput: ...
 
+    async def complete_sr(self, category_id: str, fields: dict[str, str]) -> DecisionOutput:
+        """
+        The SR-path decision for fields collected over several turns: RAISE_SR
+        when complete, else COLLECT_DETAILS, with rule 6 applied to the merged
+        fields (a prod environment given in a follow-up still needs approval).
+        """
+        ...
+
 
 _SR_PATH = {Decision.RAISE_SR, Decision.COLLECT_DETAILS}
 
@@ -114,12 +122,24 @@ class RuleEngine:
         # 5. Not answerable, not routable: a person takes it.
         return DecisionOutput(Decision.ESCALATE, ResolutionType.MANUAL_ESCALATION, 5, self.name)
 
+    async def complete_sr(self, category_id: str, fields: dict[str, str]) -> DecisionOutput:
+        required = catalog.get(category_id).required_fields
+        extraction = Extraction(
+            fields=dict(fields), missing=[name for name in required if name not in fields]
+        )
+        return self._tighten(self._sr_output(category_id, extraction))
+
     async def _sr_path(self, query: str, category_id: str) -> DecisionOutput:
         category = catalog.get(category_id)
         start = time.perf_counter()
         extraction = await self._extract(query, category)
         extraction_ms = round((time.perf_counter() - start) * 1000, 1)
+        return self._sr_output(category_id, extraction, extraction_ms)
 
+    def _sr_output(
+        self, category_id: str, extraction: Extraction, extraction_ms: float | None = None
+    ) -> DecisionOutput:
+        category = catalog.get(category_id)
         return DecisionOutput(
             decision=Decision.RAISE_SR if extraction.complete else Decision.COLLECT_DETAILS,
             resolution_type=ResolutionType.AUTO_SR,

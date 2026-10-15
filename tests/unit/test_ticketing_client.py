@@ -195,6 +195,49 @@ async def test_get_sr():
         await tk.get_sr("9")
 
 
+@pytest.mark.anyio
+@respx.mock
+async def test_list_open_srs_filters_closed_ones():
+    route = respx.get(f"{BASE}/sr").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                SR_BODY,
+                {**SR_BODY, "id": 1002, "status": "RESOLVED"},
+                {**SR_BODY, "id": 1003, "status": "PENDING_APPROVAL"},
+            ],
+        )
+    )
+    open_srs = await tk.list_open_srs("u1")
+
+    assert [r.id for r in open_srs] == ["1001", "1003"]
+    assert route.calls.last.request.url.params["user_id"] == "u1"
+
+
+@pytest.mark.anyio
+@respx.mock
+@pytest.mark.parametrize(
+    "response",
+    [
+        httpx.Response(500, text="boom"),
+        httpx.Response(200, json=[{"id": 1}]),  # missing fields
+        httpx.Response(200, text="not json"),
+    ],
+)
+async def test_list_open_srs_failures_raise_ticketing_error(response):
+    respx.get(f"{BASE}/sr").mock(return_value=response)
+    with pytest.raises(tk.TicketingError):
+        await tk.list_open_srs("u1")
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_list_open_srs_network_error_raises_ticketing_error():
+    respx.get(f"{BASE}/sr").mock(side_effect=httpx.ConnectError("refused"))
+    with pytest.raises(tk.TicketingError):
+        await tk.list_open_srs("u1")
+
+
 # --- Against the stand-in service (in process) -------------------------------
 
 
@@ -269,3 +312,11 @@ async def test_the_http_client_is_shared_across_calls(monkeypatch):
     await tk.aclose()
     await tk.get_sr(first.id)  # rebuilt after a close
     assert len(built) == 2
+
+
+@pytest.mark.anyio
+async def test_stand_in_lists_only_this_users_open_srs(fake_service):
+    first = await tk.create_sr(SR, "k1")
+    await tk.create_sr(tk.SRCreate(**{**SR.__dict__, "user_id": "u2"}), "k2")
+
+    assert [r.id for r in await tk.list_open_srs("u1")] == [first.id]

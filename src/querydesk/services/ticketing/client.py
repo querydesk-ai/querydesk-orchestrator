@@ -5,6 +5,7 @@ Boot service, PRD contract v1.1). Nothing else may call it directly.
 Built to the PRD's contract until the OpenAPI file lands in querydesk-docs:
   POST /sr       Idempotency-Key header; 201 = created, 200 = replay of the original
   GET  /sr/{id}
+  GET  /sr?user_id=…   a user's SRs (the duplicate check, PRD F5)
 Statuses follow the PRD state machine; RESOLVED, REJECTED and REVERTED are final.
 Field names follow the PRD's service_requests table — re-check them against
 the OpenAPI file when it exists.
@@ -29,6 +30,7 @@ __all__ = [
     "create_sr",
     "get_sr",
     "idempotency_key",
+    "list_open_srs",
     "next_key",
 ]
 
@@ -121,16 +123,19 @@ async def aclose() -> None:
         _client = None
 
 
+def _from_body(body: dict, replayed: bool = False) -> SRRecord:
+    return SRRecord(
+        id=str(body["id"]),
+        status=str(body["status"]),
+        category_id=str(body["category_id"]),
+        requires_approval=bool(body["requires_approval"]),
+        replayed=replayed,
+    )
+
+
 def _record(resp: httpx.Response, replayed: bool = False) -> SRRecord:
     try:
-        body = resp.json()
-        return SRRecord(
-            id=str(body["id"]),
-            status=str(body["status"]),
-            category_id=str(body["category_id"]),
-            requires_approval=bool(body["requires_approval"]),
-            replayed=replayed,
-        )
+        return _from_body(resp.json(), replayed)
     except (ValueError, KeyError, TypeError) as e:
         raise TicketingError(f"Ticketing response was malformed: {resp.text[:200]}") from e
 
@@ -184,3 +189,20 @@ async def get_sr(sr_id: str) -> SRRecord:
     if resp.status_code != 200:
         raise TicketingError(f"Ticketing lookup failed: {resp.status_code} {resp.text[:200]}")
     return _record(resp)
+
+
+async def list_open_srs(user_id: str) -> list[SRRecord]:
+    """The user's SRs that aren't closed yet (not in TERMINAL_STATUSES)."""
+    client = _get_client()
+    try:
+        resp = await client.get("/sr", params={"user_id": user_id})
+    except httpx.HTTPError as e:
+        raise TicketingError(f"Ticketing service unreachable: {e}") from e
+
+    if resp.status_code != 200:
+        raise TicketingError(f"Ticketing list failed: {resp.status_code} {resp.text[:200]}")
+    try:
+        records = [_from_body(body) for body in resp.json()]
+    except (ValueError, KeyError, TypeError) as e:
+        raise TicketingError(f"Ticketing response was malformed: {resp.text[:200]}") from e
+    return [r for r in records if r.status not in TERMINAL_STATUSES]

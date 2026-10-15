@@ -1,11 +1,13 @@
 """
 The only module that talks to Redis. Nothing else may open a Redis connection.
 
-Today it backs the query-embedding cache; Day 6 slot-filling state
-(conversation:{user_id}) goes through here too. Every failure — including a
+It backs the query-embedding cache (bytes) and slot-filling state
+(conversation:{user_id}, JSON). Every failure — including a
 missing REDIS_URL — raises RedisStoreError, so callers decide whether Redis
 is optional (the cache) or required (conversation state).
 """
+
+import json
 
 import redis.asyncio as redis
 from redis.exceptions import RedisError
@@ -45,3 +47,25 @@ async def set_bytes(key: str, value: bytes, ttl_s: int) -> None:
         await _get_client().set(key, value, ex=ttl_s)
     except RedisError as e:
         raise RedisStoreError(f"Redis SET failed: {e}") from e
+
+
+async def get_json(key: str):
+    """The JSON value at `key`, or None if it is absent."""
+    raw = await get_bytes(key)
+    if raw is None:
+        return None
+    try:
+        return json.loads(raw)
+    except (ValueError, UnicodeDecodeError) as e:
+        raise RedisStoreError(f"Redis value at {key!r} is not JSON: {e}") from e
+
+
+async def set_json(key: str, value, ttl_s: int) -> None:
+    await set_bytes(key, json.dumps(value).encode("utf-8"), ttl_s)
+
+
+async def delete(key: str) -> None:
+    try:
+        await _get_client().delete(key)
+    except RedisError as e:
+        raise RedisStoreError(f"Redis DEL failed: {e}") from e

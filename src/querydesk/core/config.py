@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     qdrant_api_key: str = ""
     postgres_dsn: str = ""
     redis_url: str = ""
+    # Pool size for the orchestrator's Neon database (sr_requests).
+    postgres_pool_max: int = 5
 
     # --- Retrieval -------------------------------------------------------
     qdrant_kb_collection: str = "kb_chunks"
@@ -69,6 +71,12 @@ class Settings(BaseSettings):
     # Redis failure is treated as a miss, never as a failed request.
     query_cache_enabled: bool = True
     query_cache_ttl_s: int = 7 * 24 * 3600
+
+    # --- Slot filling (PRD F4, Day 6) --------------------------------------
+    # An open conversation:{user_id} expires after this; the user then starts
+    # over. After this many follow-ups with fields still missing, escalate.
+    conversation_ttl_s: int = 30 * 60
+    conversation_max_follow_ups: int = 2
 
     # --- Generation ------------------------------------------------------
     # Every chat model on the account is a reasoning model: hidden reasoning

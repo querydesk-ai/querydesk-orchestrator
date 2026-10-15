@@ -9,7 +9,7 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
 
 ## Where we are — 2026-10-15
 
-- **Orchestrator lane: Days 1–5 done.** Eval v2 (87 rows): **routing accuracy 97%** (target
+- **Orchestrator lane: Days 1–6 done.** Eval v2 (87 rows): **routing accuracy 97%** (target
   ≥ 90%), **action requests answered with an article 0%** (target ≤ 5%), SR-bound category
   accuracy 100% — `docs/eval-report-v2.md`.
 - **Day 5:**
@@ -26,8 +26,12 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
 - **Infra:**
   - CI is green; the gitleaks licence secret is set.
   - Redis is reached over `REDIS_URL` (`rediss://` native protocol to Upstash, not its REST API).
-  - Postgres (Neon) is reachable but not used by app code yet.
-- **Next up: Day 6 slot filling.** The full plan is in [plan-day-6.md](plan-day-6.md).
+  - Postgres (Neon) holds `sr_requests` (`scripts/migrate.py`, 001 applied 2026-10-15).
+- **Day 6 (slot filling) done** on `feat/day6-slot-filling`. Verified live (stand-in ticketing,
+  Fireworks, Upstash, Neon): "keep UAT-2 up for release testing" → asks for extend until → "till
+  11 PM" → SR with approval, a row in `sr_requests`; the resend gets "already open"; out of scope →
+  "flagged", with a `MANUAL_ESCALATION` row.
+- **Next up: Day 7 notifications** (webhook receiver, Celery, reconciliation poll).
 - **PR hygiene:** turn on "Automatically delete head branches" in the repo settings. Two stacked
   PRs (#6, #8) merged into their base branch instead of `main`.
 
@@ -285,19 +289,21 @@ latency.* Detail in [plan-days-4-5.md](plan-days-4-5.md#day-5--jev-and-the-laten
 ### Day 6 — slot filling
 *Done when: a UAT extension SR raised from one message plus one follow-up.* Detail in
 [plan-day-6.md](plan-day-6.md).
-- [ ] **T** `services/conversation.py`: `conversation:{user_id}` in Redis (30-min TTL) via new
+- [x] **T** `services/conversation.py`: `conversation:{user_id}` in Redis (30-min TTL) via new
   `redis_store` JSON helpers. Redis down means single-turn, never a 500.
-- [ ] **T** Slot-filling flow in `pipeline.handle_message`: cancel; re-extract on the original
+- [x] **T** Slot-filling flow in `pipeline.handle_message`: cancel; re-extract on the original
   message plus follow-ups and merge; a new ask resets; complete raises the SR; at most 2
-  follow-ups, then ESCALATE.
-- [ ] **T** `RuleEngine.complete_sr()`: rule 6 applies to the merged fields (e.g. a prod
+  follow-ups, then ESCALATE. *A reply that adds no field counts as a new message; a cancel is the
+  new `CANCELLED` decision.*
+- [x] **T** `RuleEngine.complete_sr()`: rule 6 applies to the merged fields (e.g. a prod
   environment given in the follow-up still needs approval).
-- [ ] **T** `services/state/postgres_store.py` + `migrations/001_sr_requests.sql` +
+- [x] **T** `services/state/postgres_store.py` + `migrations/001_sr_requests.sql` +
   `scripts/migrate.py`. Record raised SRs and escalations; a failed write never loses the SR.
-- [ ] **T** Record every `ESCALATE`, then change `ESCALATE_REPLY` to "flagged for the service desk"
+- [x] **T** Record every `ESCALATE`, then change `ESCALATE_REPLY` to "flagged for the service desk"
   (falling back to "contact the desk" if the write fails).
-- [ ] **T** Duplicate check (F5): `ticketing.list_open_srs(user_id)` before creating; an open SR
-  in the same category gets an "already open" reply.
+- [x] **T** Duplicate check (F5): `ticketing.list_open_srs(user_id)` before creating; an open SR
+  in the same category gets an "already open" reply. *Also checked before asking for details, so
+  nobody fills in a form for an SR they can't have (found in the live run).*
 - [ ] **P** UAT auto-revert scheduler; approver and note on status changes.
 
 ### Day 7 — notifications · **Checkpoint 2**
