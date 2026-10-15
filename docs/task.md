@@ -7,19 +7,19 @@ Owner key: **T** = Tanmay (orchestrator) · **P** = Partner (ticketing + deploy)
 
 Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
 
-## Where we are — 2026-10-11
+## Where we are — 2026-10-15
 
-- **Orchestrator lane: Days 1–4 done.** Days 1–3 merged (PR #1); Day 4 on `day4-decision-layer`.
-  Eval v1 (83 rows): **routing accuracy 96%** (target ≥ 90%), **action requests answered with an
-  article 0%** (target ≤ 5%), informational citations 30/30 — `docs/eval-report-v1.md`.
-- **Day 4 code-review fixes (2026-10-11):** 502 mapping, same-day reopen keyed off the closed SR's
-  number, tighter status/action signals, rule 4 narrowed to actions, decision logged on failure.
-  Eval v2 (87 rows): **routing accuracy 97%**, action answered 0%, same 5 known misses —
-  `docs/eval-report-v2.md`.
+- **Orchestrator lane: Days 1–4 done and merged** (PRs #1, #3, #4). Eval v2 (87 rows):
+  **routing accuracy 97%** (target ≥ 90%), **action requests answered with an article 0%**
+  (target ≤ 5%), SR-bound category accuracy 100% — `docs/eval-report-v2.md`.
 - **Checkpoint 1 met against a stand-in.** A `/chat` message creates an SR and resending it returns
   the same SR, verified live against `tests/fakes/fake_ticketing.py` (PRD v1.1 contract). The real
-  check waits on the partner's service: `querydesk-ticketing` and `querydesk-docs` are still empty.
-- **Next up: Day 5** — Jev (starts with your Playground session) and the latency decision.
+  check waits on the partner's service, which is being built locally and not pushed yet.
+  `querydesk-docs` (contract v1.1) is Tanmay's to write.
+- **CI:** the `secrets` job fails until the `GITLEAKS_LICENSE` repo secret is set (the tests job
+  passes).
+- **Next up: Day 5.** Jev (Playground session 2026-10-15) and the latency work: a Redis cache for
+  query embeddings plus a local-embedding spike.
 - **Plan for Days 4–5:** [plan-days-4-5.md](plan-days-4-5.md) — the steps, the decisions behind
   them, and each day's definition of done.
 
@@ -53,8 +53,10 @@ These gate everything below. Nothing in Day 1 is verifiable until the first two 
 
 **Done when:** contract v1.1 merged; both CI pipelines green.
 
-- [x] **T** `git init`; `.gitignore` covering `.env`, `venv/`, `__pycache__/`, `.pytest_cache/`,
-  `data/kb/`. **Confirm `.env` is untracked before the first commit** — it holds live Qdrant,
+- [x] **T** `git init`; `.gitignore` covering `.env`, `venv/`, `__pycache__/`, `.pytest_cache/`.
+  *(`data/kb/` was ignored at first; the articles were written for this project and are versioned
+  since 2026-10-15 so a clone can ingest and reproduce the eval.)* **Confirm `.env` is untracked
+  before the first commit** — it holds live Qdrant,
   Postgres and Redis credentials.
 - [x] **T** Pin dependencies (now in `pyproject.toml`; `requirements.txt` removed): add `fastembed` (sparse BM25, CPU) and `respx`
   (test mocking); pin `qdrant-client==1.19.1`; drop the duplicated `python-dotenv`; pin `redis`,
@@ -138,8 +140,9 @@ These gate everything below. Nothing in Day 1 is verifiable until the first two 
 - [x] **T** Calibration script that sets `confidence_high` / `confidence_mid` from the eval set.
   *`scripts/eval_run.py` + `scripts/eval_report.py` → `docs/eval-report-v0.md`. Calibrated:
   high 0.56, mid 0.49, router_min 0.43. SR-bound category accuracy 100% (target ≥ 90%).*
-- [x] **T** CI fixed: `gitleaks-action` needs a paid licence for org repos, so the secrets job had
-  failed on every run; it now runs the MIT gitleaks CLI. Merged in PR #1.
+- [~] **T** CI secrets scan: PR #1 switched to the MIT gitleaks CLI; a later commit went back to
+  `gitleaks-action@v3`, which needs a `GITLEAKS_LICENSE` secret (free key from gitleaks.io for org
+  repos). *Add the secret — until then the `secrets` job fails on every run.*
 - [ ] **P** Status state machine, `PATCH /sr/{id}/status`, 409 on invalid moves, status history;
   a unit test per transition.
 
@@ -159,7 +162,7 @@ These gate everything below. Nothing in Day 1 is verifiable until the first two 
 ## Day 4 — decision layer · **Checkpoint 1**
 
 **Done when:** the orchestrator creates a real SR in the ticketing service.
-**Status:** all **T** items done on `day4-decision-layer`, verified live against the stand-in
+**Status:** all **T** items done and merged (PRs #3, #4), verified live against the stand-in
 ticketing service (`tests/fakes/fake_ticketing.py`). The real checkpoint still waits on the
 partner's `POST /sr` and contract v1.1.
 
@@ -285,7 +288,8 @@ latency.* Detail in [plan-days-4-5.md](plan-days-4-5.md#day-5--jev-and-the-laten
 ### Day 9 — demo scenarios · **Checkpoint 3**
 *Done when: all 10 scenarios pass.*
 - [ ] **B** Run the 10 demo scenarios together (one end-to-end run per category); fix bugs.
-- [ ] **T** Eval report v1. **P** Contract tests against the OpenAPI file.
+- [ ] **T** Final eval report (the PRD's "eval report v1"; v0–v2 already exist). **P** Contract
+  tests against the OpenAPI file.
 
 ### Day 10 — ship
 *Done when: v1.0 tagged and live.*
