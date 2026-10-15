@@ -22,9 +22,12 @@ services share nothing but the API contract and `categories.json`. Full spec and
   rule engine: rules 97% vs Jev 91%, so the rule engine stays the default
   ([docs/jev-notes.md](docs/jev-notes.md)).
 
-**Next:** Day 6 — slot filling across turns (Redis), a duplicate-SR check and the `sr_requests`
-table ([docs/plan-day-6.md](docs/plan-day-6.md)). Notifications, status answers and the chat page
-are Days 7–8. The partner's ticketing service isn't pushed yet; a stand-in implements its contract.
+- **Day 6:** slot filling across turns (Redis, at most 2 follow-ups, "cancel" works), a
+  duplicate-SR check (one open SR per user and category), and the `sr_requests` table in Neon
+  recording every raised SR and escalation ([docs/plan-day-6.md](docs/plan-day-6.md)).
+
+**Next:** Day 7 — the webhook receiver and notifications. Status answers and the chat page are
+Day 8. The partner's ticketing service isn't pushed yet; a stand-in implements its contract.
 
 ## Setup
 
@@ -92,7 +95,12 @@ Each message gets exactly one `decision` from the rule engine (first match wins)
 | `ANSWER_WITH_DISCLAIMER` | `RAG` | not an action, score ≥ `confidence_mid` |
 | `RAISE_SR` | `AUTO_SR` | an action, router confident, all required fields present → `sr_id` |
 | `COLLECT_DETAILS` | `AUTO_SR` | as above, but required fields are missing → `missing_fields` |
-| `ESCALATE` | `MANUAL_ESCALATION` | anything else |
+| `ESCALATE` | `MANUAL_ESCALATION` | anything else; recorded in `sr_requests` for the desk |
+| `CANCELLED` | `AUTO_SR` | "cancel" while details are being collected |
+
+`COLLECT_DETAILS` opens a conversation: the next message fills the missing fields ("till 11 PM")
+and the SR is raised once they're complete. Fields still missing after 2 follow-ups escalate. A
+user with an open SR in the same category is told so instead of getting a second one.
 
 Config rules in `data/decision_rules.json` apply last and can only tighten a decision (force
 approval or escalation). An action request is never answered with an article. Answers carry a
@@ -140,6 +148,7 @@ config rather than application code):
 
 ```bash
 uv run scripts/check_services.py
+uv run scripts/migrate.py           # create/upgrade sr_requests in the orchestrator's Neon DB
 ```
 
 ## Layout
@@ -156,7 +165,8 @@ src/querydesk/
   models/schemas.py             # request/response shapes, Decision + ResolutionType
   eval/                         # eval-set schema, threshold calibration, report rendering
   services/
-    pipeline.py                 # the whole /chat flow: embed → retrieve + route → decide → act
+    pipeline.py                 # the whole /chat flow: conversation? → embed → retrieve + route → decide → act
+    conversation.py             # slot-filling state, conversation:{user_id} in Redis
     rag.py                      # retrieve() + generate() a grounded answer
     catalog.py                  # the only app-code reader of categories.json
     llm/fireworks.py            # the only module that talks to Fireworks
@@ -173,11 +183,13 @@ src/querydesk/
       rules.py                  # rule 6 from data/decision_rules.json, tighten-only
       engine.py                 # DecisionEngine interface + RuleEngine
     ticketing/client.py         # the only module that talks to the ticketing service
-    state/redis_store.py        # the only module that talks to Redis (query-embedding cache)
+    state/redis_store.py        # the only module that talks to Redis (query cache, conversations)
+    state/postgres_store.py     # the only module that talks to Postgres (sr_requests)
 tests/
   unit/                         # pure + mocked-dependency tests
   integration/                  # ASGI app driven in-process, still offline
   fakes/fake_ticketing.py       # stand-in ticketing service (PRD contract v1.1)
+migrations/                     # plain SQL, applied in order by scripts/migrate.py
 data/
   categories.json               # the 10 categories — single source of truth
   decision_rules.json           # rule 6: force approval / escalation
@@ -191,6 +203,7 @@ scripts/
   latency_spike.py              # local embedding models vs qwen3, in-memory Qdrant
   jev_compare.py                # Jev vs rule signals on the eval set (spends JevStation credits)
   check_services.py             # Qdrant/Redis/Postgres reachability
+  migrate.py                    # apply migrations/*.sql, tracked in schema_migrations
 ```
 
 See [CLAUDE.md](CLAUDE.md) for the architectural invariants — particularly why retrieval confidence
