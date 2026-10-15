@@ -115,11 +115,3 @@ async def generate(query: str, retrieval: Retrieval) -> RagResult:
         sources=_to_sources(retrieval.hits),
         retrieval_confidence=retrieval.top_dense_score,
     )
-
-
-async def answer(query: str, vectors: QueryVectors | None = None) -> RagResult:
-    """
-    Retrieve and answer in one call. Returns RAG with citations when the
-    knowledge base covers the question, MANUAL_ESCALATION when it doesn't.
-    """
-    return await generate(query, await retrieve(query, vectors))

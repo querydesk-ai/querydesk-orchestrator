@@ -46,6 +46,11 @@ def llm_spy(monkeypatch):
     return calls
 
 
+async def _answer(query, vectors=None):
+    """Retrieve then generate — what the pipeline does on the ANSWER paths."""
+    return await rag.generate(query, await rag.retrieve(query, vectors))
+
+
 def _stub_search(monkeypatch, hits, dense_score):
     async def fake_search(dense_vector, sparse_vector, top_k=None):
         return hits, dense_score
@@ -57,7 +62,7 @@ def _stub_search(monkeypatch, hits, dense_score):
 async def test_grounded_answer_returns_rag_with_sources(monkeypatch, stub_embeddings, llm_spy):
     _stub_search(monkeypatch, [_chunk()], 0.82)
 
-    result = await rag.answer("when is my commission credited?")
+    result = await _answer("when is my commission credited?")
 
     assert result.resolution_type is ResolutionType.RAG
     assert result.reply == "Commission is credited on the 7th [1]."
@@ -76,7 +81,7 @@ async def test_no_hits_escalates_without_calling_the_llm(monkeypatch, stub_embed
     """
     _stub_search(monkeypatch, [], 0.1)
 
-    result = await rag.answer("what is the capital of France")
+    result = await _answer("what is the capital of France")
 
     assert result.resolution_type is ResolutionType.MANUAL_ESCALATION
     assert result.sources == []
@@ -94,7 +99,7 @@ async def test_confidence_is_the_dense_score_not_a_fused_score(
     """
     _stub_search(monkeypatch, [_chunk(score=0.5)], 0.82)
 
-    result = await rag.answer("when is my commission credited?")
+    result = await _answer("when is my commission credited?")
 
     assert result.retrieval_confidence == 0.82
     assert result.sources[0].score == 0.5
@@ -104,7 +109,7 @@ async def test_confidence_is_the_dense_score_not_a_fused_score(
 async def test_confidence_is_reported_even_when_escalating(monkeypatch, stub_embeddings, llm_spy):
     _stub_search(monkeypatch, [], 0.17)
 
-    result = await rag.answer("unrelated question")
+    result = await _answer("unrelated question")
 
     # Day 3 calibration needs the near-miss scores, not just the hits.
     assert result.retrieval_confidence == 0.17
@@ -118,7 +123,7 @@ async def test_context_is_numbered_and_sent_to_the_llm(monkeypatch, stub_embeddi
         0.8,
     )
 
-    await rag.answer("a question")
+    await _answer("a question")
 
     system_prompt = llm_spy[0]["messages"][0]["content"]
     assert "[1] A" in system_prompt
@@ -131,7 +136,7 @@ async def test_context_is_numbered_and_sent_to_the_llm(monkeypatch, stub_embeddi
 async def test_system_prompt_forbids_outside_knowledge(monkeypatch, stub_embeddings, llm_spy):
     _stub_search(monkeypatch, [_chunk()], 0.8)
 
-    await rag.answer("a question")
+    await _answer("a question")
 
     system_prompt = llm_spy[0]["messages"][0]["content"].lower()
     assert "only" in system_prompt
@@ -142,7 +147,7 @@ async def test_system_prompt_forbids_outside_knowledge(monkeypatch, stub_embeddi
 async def test_user_query_is_passed_through_verbatim(monkeypatch, stub_embeddings, llm_spy):
     _stub_search(monkeypatch, [_chunk()], 0.8)
 
-    await rag.answer("when is my commission credited?")
+    await _answer("when is my commission credited?")
 
     user_message = llm_spy[0]["messages"][1]
     assert user_message["role"] == "user"
@@ -153,7 +158,7 @@ async def test_user_query_is_passed_through_verbatim(monkeypatch, stub_embedding
 async def test_generation_uses_low_temperature(monkeypatch, stub_embeddings, llm_spy):
     _stub_search(monkeypatch, [_chunk()], 0.8)
 
-    await rag.answer("a question")
+    await _answer("a question")
 
     assert llm_spy[0]["temperature"] == 0.2
 
@@ -162,7 +167,7 @@ async def test_generation_uses_low_temperature(monkeypatch, stub_embeddings, llm
 async def test_snippet_is_truncated_for_the_api_response(monkeypatch, stub_embeddings, llm_spy):
     _stub_search(monkeypatch, [_chunk(text="x" * 1000)], 0.8)
 
-    result = await rag.answer("a question")
+    result = await _answer("a question")
 
     # The citation carries a preview, not the whole chunk.
     assert len(result.sources[0].snippet) == 300
@@ -170,7 +175,7 @@ async def test_snippet_is_truncated_for_the_api_response(monkeypatch, stub_embed
 
 @pytest.mark.anyio
 async def test_precomputed_vectors_skip_embedding(monkeypatch, llm_spy):
-    """The router shares the dense vector; answer() must not embed a second time."""
+    """The router shares the dense vector; retrieve() must not embed a second time."""
 
     async def must_not_embed(text):
         raise AssertionError("embedded twice")
@@ -184,7 +189,7 @@ async def test_precomputed_vectors_skip_embedding(monkeypatch, llm_spy):
 
     monkeypatch.setattr(rag.qdrant_store, "hybrid_search", fake_search)
 
-    await rag.answer("q", vectors=QueryVectors(dense=[0.5], sparse=object()))
+    await _answer("q", vectors=QueryVectors(dense=[0.5], sparse=object()))
 
     assert seen["dense"] == [0.5]
 
