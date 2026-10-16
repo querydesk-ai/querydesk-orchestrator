@@ -17,6 +17,17 @@ TICKETING_BASE_URL=http://127.0.0.1:8091 POSTGRES_DSN=postgresql://nobody:x@127.
 TICKETING_BASE_URL=http://127.0.0.1:8091 REDIS_URL=redis://127.0.0.1:1 uv run uvicorn querydesk.main:app --port 8099 &
 ```
 
+Status notifications (Day 7) — same `WEBHOOK_SECRET` in all three, and point the stand-in at the
+app:
+
+```bash
+export WEBHOOK_SECRET=dev-secret
+STAND_IN_WEBHOOK_URL=http://127.0.0.1:8097/webhooks/sr-status uv run uvicorn tests.fakes.fake_ticketing:app --port 8091 &
+TICKETING_BASE_URL=http://127.0.0.1:8091 uv run celery -A querydesk.worker worker --pool=solo -l info --without-gossip --without-mingle --without-heartbeat &
+# optional, fast reconcile for a test run:
+RECONCILE_INTERVAL_S=15 TICKETING_BASE_URL=http://127.0.0.1:8091 uv run celery -A querydesk.worker beat -l info -s "$CLAUDE_JOB_DIR/tmp/beat-schedule" &
+```
+
 Ready when `curl localhost:8097/health` returns `{"status":"ok"}` (~10–20 s: Qdrant check at boot).
 
 ## Drive
@@ -44,10 +55,20 @@ Follow-ups are extracted from the user's reply only and every value must appear 
 text; read the Redis state after each turn to see exactly what was collected — the reply text
 alone doesn't show it.
 
+- Notifications: raise an approval SR, `PATCH /sr/{id}/status` to APPROVED on the stand-in, then
+  read `notifications` and `sr_requests.last_notified_status` for the user (Neon). The worker logs
+  one `sr_id=… status=… source=webhook|reconcile written=True|False` line per change.
+- Lost webhook: stop the app, PATCH, then `uv run celery -A querydesk.worker call querydesk.reconcile`.
+- Replay: resend an identical signed body → 202 and `written=False`; a wrong signature → 401.
+
 ## Gotchas
 
 - Bash heredocs containing apostrophes break in this harness; write helper scripts with the Write
   tool into `$CLAUDE_JOB_DIR/tmp` instead.
 - `grep -i error` on the app log matches the `"error": null` key in every decision line.
 - Kill servers on Windows: `Get-NetTCPConnection -LocalPort <p> -State Listen | % { Stop-Process -Id $_.OwningProcess -Force }`.
-- Live runs leave rows in Neon `sr_requests`; use recognisable user ids so they can be deleted.
+- The served stand-in numbers SRs from the clock (e.g. 24930355), not 1001: notifications are
+  unique per `(sr_id, status)`, so a reused id's status changes would be dropped as duplicates.
+- Upstash `INFO stats` counters flip between shards; don't use them to measure Celery's idle cost.
+- Killing the worker by port doesn't work; stop the `celery` python processes by command line.
+- Live runs leave rows in Neon `sr_requests` and `notifications`; use recognisable user ids so they can be deleted.

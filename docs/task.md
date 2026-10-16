@@ -7,7 +7,7 @@ Owner key: **T** = Tanmay (orchestrator) · **P** = Partner (ticketing + deploy)
 
 Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
 
-## Where we are — 2026-10-15
+## Where we are — 2026-10-16
 
 - **Orchestrator lane: Days 1–6 done.** Eval v2 (87 rows): **routing accuracy 97%** (target
   ≥ 90%), **action requests answered with an article 0%** (target ≤ 5%), SR-bound category
@@ -31,7 +31,12 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
   Fireworks, Upstash, Neon): "keep UAT-2 up for release testing" → asks for extend until → "till
   11 PM" → SR with approval, a row in `sr_requests`; the resend gets "already open"; out of scope →
   "flagged", with a `MANUAL_ESCALATION` row.
-- **Next up: Day 7 notifications** (webhook receiver, Celery, reconciliation poll).
+- **Day 7 (notifications) done** on `feat/day7-notifications` ([plan-day-7.md](plan-day-7.md)).
+  **Checkpoint 2 met against the stand-in:** approve in its Swagger → notification row in Neon in
+  ~6 s; replayed webhook writes nothing; a webhook lost while the orchestrator was down is caught by
+  `reconcile`. Migration 002 applied 2026-10-16.
+- **Next up:** contract v1.1 (now including the webhook signature format), the bge-base trial
+  (before Day 8), then Day 8 (status questions, `GET /notifications`, chat page).
 - **PR hygiene:** turn on "Automatically delete head branches" in the repo settings. Two stacked
   PRs (#6, #8) merged into their base branch instead of `main`.
 
@@ -321,8 +326,22 @@ latency.* Detail in [plan-days-4-5.md](plan-days-4-5.md#day-5--jev-and-the-laten
 
 ### Day 7 — notifications · **Checkpoint 2**
 *Done when: approve in Swagger, user notified within 1 minute.*
-- [ ] **T** Webhook receiver with signature verification; Celery notify task; 10-minute
-  reconciliation poll via `GET /sr?updated_since=`. Use the quiet worker flags in dev.
+Detail in [plan-day-7.md](plan-day-7.md).
+- [x] **T** `POST /webhooks/sr-status`: HMAC-SHA256 hex `X-Signature` over the raw body
+  (`services/notifications/signing.py`); 401 / 422 / 503 (broker down → the outbox retries); 202
+  once queued. No DB work on the request.
+- [x] **T** Celery app (`querydesk.worker`, Celery 5.6.3): `notify_status_change` (retried on
+  `UpstreamError`) and a beat `reconcile` every 10 min via `GET /sr?updated_since=` with a Redis
+  watermark. One event loop per worker process; `--pool=solo` on Windows.
+- [x] **T** `migrations/002_notifications.sql`: `UNIQUE (sr_id, status)` makes retries, replays and
+  reconcile overlaps no-ops; `sr_requests` only moves forward (`STATUS_RANK`).
+- [x] **T** Stand-in ticketing sends signed webhooks (`STAND_IN_WEBHOOK_URL`) and filters on
+  `updated_since`.
+- [x] **B** **Checkpoint 2** against the stand-in: ~6 s from approval to notification. *Repeat
+  against the real service.*
+- [ ] **T** Measure an idle worker's Upstash command use on the dashboard (INFO counters are
+  unreliable on Upstash).
+- [ ] **T** Write the webhook signature format into contract v1.1 (`querydesk-docs`).
 - [ ] **P** Postman collection that plays the approver; seed data.
 
 ### Day 8 — chat page

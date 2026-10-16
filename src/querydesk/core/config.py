@@ -126,6 +126,22 @@ class Settings(BaseSettings):
     ticketing_base_url: str = ""
     ticketing_timeout_s: float = 10.0
 
+    # --- Status notifications (PRD F9, Day 7) -------------------------------
+    # Shared with the ticketing service: it signs every status webhook with
+    # HMAC-SHA256 of the raw body under this secret. Empty rejects every
+    # webhook — an unsigned status change is never accepted.
+    webhook_secret: str = ""
+    # The Celery beat job that catches webhooks the ticketing service gave up
+    # on (PRD: every 10 minutes, GET /sr?updated_since=). Each run looks back
+    # `overlap` past the last watermark so a clock skew between the services
+    # can't open a gap; with no watermark yet, it looks back `first_lookback`.
+    reconcile_interval_s: int = 600
+    reconcile_overlap_s: int = 120
+    reconcile_first_lookback_s: int = 24 * 3600
+    # Stand-in ticketing only (tests/fakes/fake_ticketing.py): where it posts
+    # its signed status webhooks, e.g. http://127.0.0.1:8000/webhooks/sr-status.
+    stand_in_webhook_url: str = ""
+
     # --- Content ---------------------------------------------------------
     kb_dir: Path = BASE_DIR / "data" / "kb"
     categories_file: Path = BASE_DIR / "data" / "categories.json"

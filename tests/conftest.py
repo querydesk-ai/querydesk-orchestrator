@@ -40,6 +40,10 @@ def no_query_cache(monkeypatch):
     monkeypatch.setattr(settings, "query_cache_enabled", False)
     monkeypatch.setattr(settings, "redis_url", "")
     monkeypatch.setattr(settings, "postgres_dsn", "")
+    # Status webhooks: a known secret, and the stand-in never posts anywhere
+    # unless a test hands it a target.
+    monkeypatch.setattr(settings, "webhook_secret", "test-secret")
+    monkeypatch.setattr(settings, "stand_in_webhook_url", "")
     redis_store._client = None
     yield
     redis_store._client = None
