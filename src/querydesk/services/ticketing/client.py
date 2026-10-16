@@ -6,6 +6,7 @@ Built to the PRD's contract until the OpenAPI file lands in querydesk-docs:
   POST /sr       Idempotency-Key header; 201 = created, 200 = replay of the original
   GET  /sr/{id}
   GET  /sr?user_id=…   a user's SRs (the duplicate check, PRD F5)
+  GET  /sr?updated_since=…   SRs changed since a time (the Day 7 reconciliation poll)
 Statuses follow the PRD state machine; RESOLVED, REJECTED and REVERTED are final.
 Field names follow the PRD's service_requests table — re-check them against
 the OpenAPI file when it exists.
@@ -31,11 +32,23 @@ __all__ = [
     "get_sr",
     "idempotency_key",
     "list_open_srs",
+    "list_updated_since",
+    "STATUS_RANK",
     "next_key",
 ]
 
 # An SR in one of these is closed: a repeat of the same request is a new SR.
 TERMINAL_STATUSES = frozenset({"RESOLVED", "REJECTED", "REVERTED"})
+# How far along the PRD state machine a status is. Transitions only move up,
+# so a webhook for a lower status than the one recorded arrived out of order.
+STATUS_RANK = {
+    "PENDING": 0,
+    "APPROVED": 1,
+    "REJECTED": 1,
+    "IN_PROGRESS": 2,
+    "RESOLVED": 3,
+    "REVERTED": 4,
+}
 # How many closed SRs create_sr will step past for one key in one day.
 MAX_REOPENS = 10
 
@@ -57,6 +70,9 @@ class SRRecord:
     requires_approval: bool
     # True when the service returned an existing SR for this idempotency key.
     replayed: bool = False
+    user_id: str | None = None
+    # ISO-8601 as the service sent it; the reconciliation poll's watermark.
+    updated_at: str | None = None
 
 
 def idempotency_key(
@@ -130,6 +146,8 @@ def _from_body(body: dict, replayed: bool = False) -> SRRecord:
         category_id=str(body["category_id"]),
         requires_approval=bool(body["requires_approval"]),
         replayed=replayed,
+        user_id=str(body["user_id"]) if body.get("user_id") is not None else None,
+        updated_at=str(body["updated_at"]) if body.get("updated_at") is not None else None,
     )
 
 
@@ -191,18 +209,27 @@ async def get_sr(sr_id: str) -> SRRecord:
     return _record(resp)
 
 
-async def list_open_srs(user_id: str) -> list[SRRecord]:
-    """The user's SRs that aren't closed yet (not in TERMINAL_STATUSES)."""
+async def _list(params: dict[str, str]) -> list[SRRecord]:
     client = _get_client()
     try:
-        resp = await client.get("/sr", params={"user_id": user_id})
+        resp = await client.get("/sr", params=params)
     except httpx.HTTPError as e:
         raise TicketingError(f"Ticketing service unreachable: {e}") from e
 
     if resp.status_code != 200:
         raise TicketingError(f"Ticketing list failed: {resp.status_code} {resp.text[:200]}")
     try:
-        records = [_from_body(body) for body in resp.json()]
+        return [_from_body(body) for body in resp.json()]
     except (ValueError, KeyError, TypeError) as e:
         raise TicketingError(f"Ticketing response was malformed: {resp.text[:200]}") from e
+
+
+async def list_open_srs(user_id: str) -> list[SRRecord]:
+    """The user's SRs that aren't closed yet (not in TERMINAL_STATUSES)."""
+    records = await _list({"user_id": user_id})
     return [r for r in records if r.status not in TERMINAL_STATUSES]
+
+
+async def list_updated_since(since: datetime) -> list[SRRecord]:
+    """Every SR whose status changed at or after `since` (any user)."""
+    return await _list({"updated_since": since.astimezone(UTC).isoformat()})

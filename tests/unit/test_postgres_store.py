@@ -13,11 +13,58 @@ from querydesk.core.errors import PostgresStoreError, UpstreamError
 from querydesk.services.state import postgres_store
 
 
+class FakeTransaction:
+    def __init__(self, pool):
+        self.pool = pool
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        self.pool.transactions.append("rollback" if exc[0] else "commit")
+        return False
+
+
+class FakeConn:
+    """A connection whose notifications insert conflicts on a seen (sr_id, status)."""
+
+    def __init__(self, pool):
+        self.pool = pool
+
+    def transaction(self):
+        return FakeTransaction(self.pool)
+
+    async def __aenter__(self):  # pool.acquire() context
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def fetchval(self, sql, *args):
+        if self.pool.error:
+            raise self.pool.error
+        self.pool.calls.append((sql, args))
+        key = (args[1], args[2])
+        if key in self.pool.notified:
+            return None
+        self.pool.notified.add(key)
+        return len(self.pool.notified)
+
+    async def execute(self, sql, *args):
+        self.pool.calls.append((sql, args))
+        return "UPDATE 1"
+
+
 class FakePool:
     def __init__(self, error: Exception | None = None):
         self.error = error
         self.calls = []
         self.closed = False
+        self.notified = set()
+        self.transactions = []
+
+    def acquire(self):
+        return FakeConn(self)
 
     async def fetchval(self, sql, *args):
         if self.error:
@@ -57,10 +104,12 @@ async def test_record_sr_inserts_an_auto_sr_row(pool):
     assert row_id == 1
     [(sql, args)] = pool.calls
     assert "INSERT INTO sr_requests" in sql
-    ticket_id, user_id, category_id, details, status, rtype, approval, confidence = args
+    ticket_id, user_id, category_id, details, status, rtype, approval, confidence, notified = args
     assert (ticket_id, user_id, category_id) == ("1001", "u1", "it_uat_extension")
     assert json.loads(details)["fields"] == {"environment": "UAT-2"}
     assert (status, rtype, approval, confidence) == ("PENDING_APPROVAL", "AUTO_SR", True, 0.61)
+    # The user was told about the SR in chat: its creation status is notified.
+    assert notified == "PENDING_APPROVAL"
 
 
 @pytest.mark.anyio
@@ -73,6 +122,7 @@ async def test_record_escalation_has_no_ticket_and_is_manual(pool):
     assert args[0] is None  # ticket_id
     assert args[2] is None  # category_id
     assert args[4:7] == ("ESCALATED", "MANUAL_ESCALATION", False)
+    assert args[8] is None  # nothing to notify about
 
 
 @pytest.mark.anyio
@@ -136,3 +186,48 @@ async def test_insert_failure_is_a_postgres_store_error(pool, error):
 
 def test_postgres_store_error_is_an_upstream_error():
     assert issubclass(PostgresStoreError, UpstreamError)
+
+
+# --- Notifications (Day 7) ------------------------------------------------------
+
+
+async def _status_change(status="APPROVED", lower=("PENDING",)):
+    return await postgres_store.record_status_change(
+        sr_id="1001",
+        user_id="u1",
+        status=status,
+        message="Your request SR 1001 was approved.",
+        lower_statuses=list(lower),
+    )
+
+
+@pytest.mark.anyio
+async def test_a_status_change_writes_a_notification_and_advances_the_sr(pool):
+    assert await _status_change() is True
+
+    [(insert, iargs), (update, uargs)] = pool.calls
+    assert "INSERT INTO notifications" in insert and "ON CONFLICT" in insert
+    assert iargs == ("u1", "1001", "APPROVED", "Your request SR 1001 was approved.")
+    assert "UPDATE sr_requests" in update and "ANY($3" in update
+    assert uargs == ("1001", "APPROVED", ["PENDING"])
+    assert pool.transactions == ["commit"]
+
+
+@pytest.mark.anyio
+async def test_a_repeated_status_change_writes_nothing(pool):
+    await _status_change()
+    pool.calls.clear()
+
+    assert await _status_change() is False
+    # Only the conflicting insert ran; sr_requests was not touched again.
+    [(sql, _)] = pool.calls
+    assert "INSERT INTO notifications" in sql
+
+
+@pytest.mark.anyio
+async def test_a_failed_notification_write_is_a_postgres_store_error(pool):
+    pool.error = asyncpg.UndefinedTableError("no notifications")
+
+    with pytest.raises(PostgresStoreError, match="notification"):
+        await _status_change()
+    assert pool.transactions == ["rollback"]

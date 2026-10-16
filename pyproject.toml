@@ -20,6 +20,9 @@ dependencies = [
   # Used from PRD Day 6 onward (Redis slot-filling, Postgres orchestrator tables).
   "redis==8.1.0",
   "asyncpg==0.31.0",
+  # Day 7: webhook notify task + reconciliation beat. No [redis] extra: it caps
+  # redis-py below the 8.x pinned above; kombu imports redis-py directly.
+  "celery==5.6.3",
 ]
 
 # Dev tooling. `uv sync` installs this group by default; uv.lock pins the full tree.

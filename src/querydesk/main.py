@@ -4,7 +4,7 @@ from importlib.metadata import version
 
 from fastapi import FastAPI
 
-from querydesk.api.routes import chat, health
+from querydesk.api.routes import chat, health, webhooks
 from querydesk.core.errors import VectorStoreError
 from querydesk.services.retrieval.qdrant_store import ensure_collections
 from querydesk.services.state import postgres_store, redis_store
@@ -50,3 +50,4 @@ app = FastAPI(
 
 app.include_router(health.router)
 app.include_router(chat.router)
+app.include_router(webhooks.router)

@@ -5,7 +5,7 @@ end to end with no network.
 """
 
 import json
-from datetime import date
+from datetime import UTC, date, datetime, timedelta, timezone
 
 import httpx
 import pytest
@@ -13,6 +13,7 @@ import respx
 
 from querydesk.core.config import settings
 from querydesk.core.errors import UpstreamError
+from querydesk.services.notifications import signing
 from querydesk.services.ticketing import client as tk
 from tests.fakes.fake_ticketing import create_app
 
@@ -320,3 +321,77 @@ async def test_stand_in_lists_only_this_users_open_srs(fake_service):
     await tk.create_sr(tk.SRCreate(**{**SR.__dict__, "user_id": "u2"}), "k2")
 
     assert [r.id for r in await tk.list_open_srs("u1")] == [first.id]
+
+
+# --- Reconciliation poll and status webhooks (Day 7) --------------------------
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_list_updated_since_sends_utc_iso_and_reads_user_and_time():
+    route = respx.get(f"{BASE}/sr").mock(
+        return_value=httpx.Response(
+            200, json=[{**SR_BODY, "user_id": "u1", "updated_at": "2026-10-16T10:00:00+00:00"}]
+        )
+    )
+    since = datetime(2026, 10, 16, 15, 30, tzinfo=timezone(timedelta(hours=5, minutes=30)))
+
+    [record] = await tk.list_updated_since(since)
+
+    assert route.calls.last.request.url.params["updated_since"] == "2026-10-16T10:00:00+00:00"
+    assert record.user_id == "u1"
+    assert record.updated_at == "2026-10-16T10:00:00+00:00"
+
+
+def test_status_rank_only_moves_forward_along_the_prd_machine():
+    r = tk.STATUS_RANK
+    assert r["PENDING"] < r["APPROVED"] == r["REJECTED"] < r["IN_PROGRESS"]
+    assert r["IN_PROGRESS"] < r["RESOLVED"] < r["REVERTED"]
+    assert set(r) >= tk.TERMINAL_STATUSES
+
+
+@pytest.mark.anyio
+async def test_stand_in_filters_on_updated_since(fake_service):
+    first = await tk.create_sr(SR, "k1")
+    cutoff = datetime.now(UTC)
+    later = await tk.create_sr(SR, "k2")
+
+    assert [r.id for r in await tk.list_updated_since(cutoff)] == [later.id]
+    assert {r.id for r in await tk.list_updated_since(cutoff - timedelta(hours=1))} == {
+        first.id,
+        later.id,
+    }
+
+
+@pytest.mark.anyio
+async def test_stand_in_sends_a_signed_webhook_on_each_status_change(monkeypatch):
+    received = []
+
+    def receive(request: httpx.Request) -> httpx.Response:
+        received.append(request)
+        return httpx.Response(202)
+
+    app = create_app(
+        webhook_url="http://orchestrator.test/webhooks/sr-status",
+        webhook_transport=httpx.MockTransport(receive),
+    )
+    monkeypatch.setattr(
+        tk,
+        "_make_client",
+        lambda: httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=BASE),
+    )
+    created = await tk.create_sr(tk.SRCreate(**{**SR.__dict__, "requires_approval": True}), "k1")
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=BASE) as c:
+        resp = await c.patch(f"/sr/{created.id}/status", json={"status": "APPROVED", "note": "ok"})
+    assert resp.status_code == 200
+
+    [request] = received
+    assert signing.verify(request.content, request.headers[signing.SIGNATURE_HEADER])
+    event = json.loads(request.content)
+    assert event["sr_id"] == created.id and event["user_id"] == "u1"
+    assert (event["from_status"], event["to_status"], event["note"]) == (
+        "PENDING",
+        "APPROVED",
+        "ok",
+    )
