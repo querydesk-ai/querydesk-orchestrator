@@ -11,7 +11,7 @@ requests into correctly categorised Service Requests (SRs) it tracks to closure.
 The authoritative spec is `../SR Resolution Bot — Final PRD & 10-Day Roadmap.md`. **Read it before
 making design decisions** — it supersedes the older "Phase 0 / Phase 1" framing that earlier versions
 of this repo used. The current task breakdown lives in [docs/task.md](docs/task.md); the next day's
-design is in [docs/plan-day-6.md](docs/plan-day-6.md).
+design is in [docs/plan-day-7.md](docs/plan-day-7.md).
 
 QueryDesk is two services behind one contract:
 
@@ -53,6 +53,12 @@ uv run uvicorn tests.fakes.fake_ticketing:app --port 8081
 TICKETING_BASE_URL=http://127.0.0.1:8081 uv run uvicorn querydesk.main:app --reload
 
 uv run uvicorn querydesk.main:app --reload
+
+# Status notifications (Day 7). WEBHOOK_SECRET must match on both sides. Windows needs --pool=solo.
+STAND_IN_WEBHOOK_URL=http://127.0.0.1:8000/webhooks/sr-status uv run uvicorn tests.fakes.fake_ticketing:app --port 8081
+uv run celery -A querydesk.worker worker --pool=solo -l info --without-gossip --without-mingle --without-heartbeat
+uv run celery -A querydesk.worker beat -l info     # reconcile every reconcile_interval_s
+uv run celery -A querydesk.worker call querydesk.reconcile   # one reconcile now
 ```
 
 Dependencies live in `pyproject.toml` + `uv.lock` only — no `requirements.txt`. Commit `uv.lock`
@@ -76,6 +82,7 @@ Everything after SR creation is async (webhook → Redis → Celery).
   search), `services/retrieval/sparse.py` (BM25), `services/ticketing/client.py` (the ticketing
   service), `services/state/redis_store.py` (Redis), `services/state/postgres_store.py` (the
   orchestrator's Neon DB), `services/llm/jev.py` (Jev, via JevStation).
+  The Celery app is `src/querydesk/worker.py`; its tasks are thin and call `services/` code.
   Each raises a subclass of `UpstreamError` (`core/errors.py`), and the routers map that whole
   family to HTTP 502 in one place.
 - `services/catalog.py` is the only app-code reader of `categories.json` (invariant #3); ask it for
@@ -118,6 +125,14 @@ Everything after SR creation is async (webhook → Redis → Celery).
   categorical reading like `change_type: "firewall change"` is fair there, and the eval measures it),
   `rules.py` (rule 6 from `data/decision_rules.json`, tighten-only, validated against the catalog),
   `engine.py` (`DecisionEngine` interface + `RuleEngine`, chosen by `decision_engine`).
+- `services/notifications/`: `signing.py` (HMAC-SHA256 hex of the raw body in `X-Signature`;
+  empty `WEBHOOK_SECRET` rejects all) and `notify.py` — `handle_status_change()` is the **only**
+  write path for a status notification, used by both the webhook task and `reconcile()`. It is
+  idempotent: `notifications` is unique per `(sr_id, status)`, and `sr_requests.status` only moves
+  to a higher `ticketing.STATUS_RANK`. PENDING is never notified. `POST /webhooks/sr-status`
+  (`api/routes/webhooks.py`) only verifies, validates and enqueues — 202, or 503 if the broker
+  can't take it so the sender retries. Celery tasks run coroutines on one loop per worker process
+  (`worker._run`), never `asyncio.run()`: the asyncpg pool and clients are loop-bound.
 - Use the **async** Qdrant client (`AsyncQdrantClient`). The `/chat` path is async and the sync client
   would block the event loop. `fastembed` is sync and CPU-bound, so call it through
   `anyio.to_thread.run_sync` from async code.
@@ -182,14 +197,15 @@ follow the PRD — re-check them against the OpenAPI file once it lands in `quer
 Each service owns its own Neon Postgres database; they share nothing but the API contract.
 
 - **Qdrant**: `kb_chunks` (named vectors `dense` + `bm25`) and `categories` (dense only).
-- **Postgres** (`sr_orchestrator`): `sr_requests` (Day 6, `migrations/001_sr_requests.sql`);
-  `decision_logs` and `notifications` later. Schema changes are plain SQL files in `migrations/`,
+- **Postgres** (`sr_orchestrator`): `sr_requests` (Day 6, `migrations/001_sr_requests.sql`),
+  `notifications` (Day 7, `002_notifications.sql`); `decision_logs` later. Schema changes are plain SQL files in `migrations/`,
   applied in name order by `scripts/migrate.py` and tracked in `schema_migrations` — never edit an
   applied one. Only `services/state/postgres_store.py` connects from app code.
 - **Redis**: reached over `REDIS_URL` (`rediss://`, the native protocol to Upstash, never its REST
   API), only through `services/state/redis_store.py`. Holds the query-embedding cache
   (`qemb:*`), `conversation:{user_id}` slot-filling state (`conversation_ttl_s`, 30 minutes;
-  `services/conversation.py`) and the Celery broker.
+  `services/conversation.py`), the reconciliation watermark (`reconcile:since`) and the Celery
+  broker.
   Run dev workers with `--without-gossip --without-mingle --without-heartbeat` — an idle Celery
   worker will otherwise burn the Upstash free-tier command quota.
 
@@ -197,4 +213,5 @@ Each service owns its own Neon Postgres database; they share nothing but the API
 
 `.env` is gitignored and holds live credentials; `gitleaks` runs in CI. Never commit it, never paste
 key values into code, logs or test fixtures. `FIREWORKS_API_KEY` is required for ingestion and the
-answer path; `TYPESAFE_API_KEY` (JevStation) is used only by `scripts/jev_compare.py`.
+answer path; `TYPESAFE_API_KEY` (JevStation) is used only by `scripts/jev_compare.py`; `WEBHOOK_SECRET` is shared
+with the ticketing service.
