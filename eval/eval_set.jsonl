@@ -85,3 +85,4 @@
 {"id": "inf-32", "query": "can you tell me how long an account lockout lasts", "kind": "informational", "expected_decision": "ANSWER", "category_id": "it_password_reset", "expected_source": "it-password-reset.md"}
 {"id": "inf-33", "query": "I'd like to understand what time UAT shuts down every night", "kind": "informational", "expected_decision": "ANSWER", "category_id": "it_uat_extension", "expected_source": "it-uat-extension.md"}
 {"id": "inf-34", "query": "could you explain whether a rolling restart causes downtime", "kind": "informational", "expected_decision": "ANSWER", "category_id": "it_application_restart", "expected_source": "it-application-restart.md"}
+{"id": "oos-18", "query": "stop the claims app in UAT", "kind": "out_of_scope", "expected_decision": "ESCALATE"}

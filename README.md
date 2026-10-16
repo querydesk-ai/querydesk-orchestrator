@@ -96,11 +96,15 @@ Each message gets exactly one `decision` from the rule engine (first match wins)
 | `RAISE_SR` | `AUTO_SR` | an action, router confident, all required fields present → `sr_id` |
 | `COLLECT_DETAILS` | `AUTO_SR` | as above, but required fields are missing → `missing_fields` |
 | `ESCALATE` | `MANUAL_ESCALATION` | anything else; recorded in `sr_requests` for the desk |
-| `CANCELLED` | `AUTO_SR` | "cancel" while details are being collected |
+| `CANCELLED` | `AUTO_SR` | "cancel" (ends a conversation, or says there's nothing to cancel) |
 
 `COLLECT_DETAILS` opens a conversation: the next message fills the missing fields ("till 11 PM")
-and the SR is raised once they're complete. Fields still missing after 2 follow-ups escalate. A
-user with an open SR in the same category is told so instead of getting a second one.
+and the SR is raised once they're complete. A reply's values must appear in what the user wrote,
+and a reply can correct an earlier one ("it's UAT-3"). A reply that doesn't help ("not
+sure") counts as a follow-up; fields still missing after 2 follow-ups escalate to the desk with the
+conversation attached. A question or a new request mid-conversation is handled normally. A user
+with an open SR in the same category gets that SR (`RAISE_SR`, its `sr_id`) instead of a second
+one.
 
 Config rules in `data/decision_rules.json` apply last and can only tighten a decision (force
 approval or escalation). An action request is never answered with an article. Answers carry a

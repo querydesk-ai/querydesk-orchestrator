@@ -415,7 +415,8 @@ async def test_uat_extension_raised_from_one_message_plus_one_follow_up(world):
 
 
 @pytest.mark.anyio
-async def test_a_follow_up_never_overwrites_a_collected_value(world):
+async def test_values_not_stated_in_the_reply_never_overwrite_collected_ones(world):
+    """The extractor echoing other values (UAT-9 isn't in "until Friday") changes nothing."""
     _uat(
         world,
         '{"environment": "UAT-2", "extend_until": null, "reason": null}',
@@ -448,11 +449,14 @@ async def test_still_missing_after_two_follow_ups_escalates_and_is_recorded(worl
 
     assert body["decision"] == "ESCALATE"
     assert body["resolution_type"] == "MANUAL_ESCALATION"
-    assert body["reply"] == pipeline.ESCALATE_REPLY
+    assert body["reply"].startswith("I still don't have the reason after a couple of tries")
+    assert "flagged" in body["reply"]
     assert await _srs(world) == []
     [row] = world.rows
     assert row["resolution_type"] == "MANUAL_ESCALATION"
     assert row["category_id"] == "it_uat_extension"
+    assert row["details"]["fields"] == {"environment": "UAT-2", "extend_until": "Friday"}
+    assert row["details"]["query"] == "extend my UAT please\nUAT-2\nuntil Friday"
     assert await conversation.load("u1") is None
 
 
@@ -557,6 +561,8 @@ async def test_an_open_sr_stops_the_details_being_asked_for_at_all(world):
 
     again = (await _chat("keep UAT-2 up for release testing")).json()
 
+    assert again["decision"] == "RAISE_SR"
+    assert again["missing_fields"] == []
     assert again["sr_id"] == raised["sr_id"]
     assert f"already have SR {raised['sr_id']} open" in again["reply"]
     assert await conversation.load("u1") is None
@@ -620,3 +626,134 @@ async def test_postgres_down_escalation_falls_back_to_contact_the_desk(world, mo
 
     assert body["decision"] == "ESCALATE"
     assert body["reply"] == pipeline.ESCALATE_FALLBACK_REPLY
+
+
+# --- Verification findings (Day 6 follow-up) -------------------------------------
+
+
+@pytest.mark.anyio
+async def test_a_reply_can_correct_a_vague_value_and_nothing_is_invented(world):
+    """
+    The live repro: the extractor copied the opening sentence into `reason` and
+    the user's "UAT-3" was ignored. Values now come from the reply alone.
+    """
+    _uat(
+        world,
+        '{"environment": "UAT", "extend_until": null, "reason": null}',
+        '{"environment": "UAT-3", "extend_until": null, "reason": "I need my UAT extended please"}',
+        '{"environment": null, "extend_until": null, "reason": "regression testing"}',
+    )
+
+    await _chat("I need my UAT extended please")
+    corrected = (await _chat("it's UAT-3")).json()
+
+    assert corrected["decision"] == "COLLECT_DETAILS"
+    assert corrected["missing_fields"] == ["extend_until", "reason"]
+    conv = await conversation.load("u1")
+    assert conv.fields == {"environment": "UAT-3"}
+
+    answered = (await _chat("because of regression testing")).json()
+
+    # Both follow-ups used: the reason was stated, extend_until never was.
+    assert answered["decision"] == "ESCALATE"
+    assert "extend until" in answered["reply"]
+    [row] = world.rows
+    assert row["details"]["fields"] == {"environment": "UAT-3", "reason": "regression testing"}
+
+
+@pytest.mark.anyio
+async def test_follow_up_prompt_keeps_the_original_request_as_context_only(world):
+    _uat(
+        world,
+        '{"environment": "UAT-2", "extend_until": null, "reason": "release testing"}',
+        '{"environment": null, "extend_until": "11 PM", "reason": null}',
+    )
+    await _chat("keep UAT-2 up for release testing")
+    await _chat("till 11 PM")
+
+    prompt = world.extraction_calls[1][0]["content"]
+    assert "Their reply: till 11 PM" in prompt
+    assert "context only" in prompt
+
+
+@pytest.mark.anyio
+async def test_an_unhelpful_reply_counts_as_a_follow_up_and_asks_again(world):
+    _uat(world, '{"environment": "UAT-2", "extend_until": null, "reason": "release testing"}')
+    await _chat("keep UAT-2 up for release testing")
+
+    # "not sure" states no field and makes no sense on its own (rule 5).
+    world.extraction_reply = ['{"environment": null, "extend_until": null, "reason": null}'] * 2
+    world.dense_score = 0.2
+    world.categories = [CategoryHit("it_password_reset", "Password", "d", 0.2)]
+    body = (await _chat("not sure")).json()
+
+    assert body["decision"] == "COLLECT_DETAILS"
+    assert body["reply"].endswith("I just need the extend until.")
+    conv = await conversation.load("u1")
+    assert conv.follow_ups == 1 and conv.turns == ["not sure"]
+    assert world.rows == []
+
+
+@pytest.mark.anyio
+async def test_unhelpful_replies_up_to_the_cap_escalate_with_the_conversation(world):
+    _uat(world, '{"environment": "UAT-2", "extend_until": null, "reason": "release testing"}')
+    await _chat("keep UAT-2 up for release testing")
+    world.extraction_reply = ['{"environment": null, "extend_until": null, "reason": null}'] * 4
+    world.dense_score = 0.2
+    world.categories = [CategoryHit("it_password_reset", "Password", "d", 0.2)]
+
+    await _chat("not sure")
+    body = (await _chat("hmm")).json()
+
+    assert body["decision"] == "ESCALATE"
+    assert body["reply"].startswith("I still don't have the extend until")
+    assert body["requires_approval"] is None  # no SR, nothing to approve
+    [row] = world.rows
+    assert row["category_id"] == "it_uat_extension"
+    assert row["details"]["fields"] == {"environment": "UAT-2", "reason": "release testing"}
+    assert row["details"]["missing"] == ["extend_until"]
+    assert await conversation.load("u1") is None
+
+
+@pytest.mark.anyio
+async def test_unhelpful_turn_logs_its_turn_and_why(world, caplog):
+    _uat(world, '{"environment": "UAT-2", "extend_until": null, "reason": "release testing"}')
+    await _chat("keep UAT-2 up for release testing")
+    world.extraction_reply = ['{"environment": null, "extend_until": null, "reason": null}'] * 2
+    world.dense_score = 0.2
+    world.categories = [CategoryHit("it_password_reset", "Password", "d", 0.2)]
+
+    with caplog.at_level(logging.INFO, logger="querydesk.decision"):
+        await _chat("not sure")
+
+    entries = [json.loads(r.getMessage()) for r in caplog.records if r.name == "querydesk.decision"]
+    [entry] = [e for e in entries if e["query"] == "not sure"]
+    assert entry["turn"] == 1
+    assert entry["decision"] == "COLLECT_DETAILS"
+    assert "unanswered: the reply stated no field" in entry["overrides"]
+
+
+@pytest.mark.anyio
+async def test_a_correction_is_logged(world, caplog):
+    _uat(
+        world,
+        '{"environment": "UAT", "extend_until": null, "reason": null}',
+        '{"environment": "UAT-3", "extend_until": null, "reason": null}',
+    )
+    with caplog.at_level(logging.INFO, logger="querydesk.decision"):
+        await _chat("I need my UAT extended please")
+        await _chat("it's UAT-3")
+
+    entries = [json.loads(r.getMessage()) for r in caplog.records if r.name == "querydesk.decision"]
+    assert entries[1]["overrides"] == ["corrected: environment"]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("cancel", ["cancel", "never mind"])
+async def test_a_bare_cancel_with_nothing_open_records_nothing(world, cancel):
+    body = (await _chat(cancel)).json()
+
+    assert body["decision"] == "CANCELLED"
+    assert body["reply"] == pipeline.NOTHING_TO_CANCEL_REPLY
+    assert world.rows == []
+    assert world.extraction_calls == [] and world.answer_calls == []
