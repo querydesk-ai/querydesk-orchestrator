@@ -12,12 +12,16 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
 - **Orchestrator lane: Days 1–8 done and merged (PRs #1–#14), plus the embedding trial.**
   Latest eval (94 rows, 2026-10-17): **routing accuracy 96%** (target ≥ 90%), **action requests
   answered with an article 0%** (target ≤ 5%), SR-bound category accuracy 100%, status rows 6/6.
-  Last published report: `docs/eval-report-v2.md`; the final one is a Day 9 item.
+  Final report: `docs/eval-report-v3.md` (orchestrator PR #17). It adds 10/10 notifications
+  within a minute and an **answer-path p95 of 7.9 s** (target < 3 s, missed).
 - **What's left, in order:**
-  1. Contract v1.1 in `querydesk-docs` (Tanmay): the critical path for the partner.
-  2. The real ticketing service pushed (partner), then Checkpoints 1–2 repeated against it.
-  3. Day 9: the 10 demo scenarios together and the final eval report.
-  4. Day 10: deploy (partner), READMEs and demo video (Tanmay).
+  1. **Partner:** review and merge contract v1.1 (querydesk-docs PR #1). Orchestrator PR #16
+     already follows it.
+  2. **Tanmay:** judge the 20 answers in `docs/answer-support-v1.md` (target 18 of 20), fill in
+     the summary row of eval report v3, and put the partner's name in the README (PR #17).
+  3. **Partner:** push the real ticketing service, then repeat Checkpoints 1–2 against it.
+  4. **Day 9, together:** the 10 demo scenarios.
+  5. **Day 10:** deploy (partner), then the demo video and a smoke test of the live site (Tanmay).
 - **Day 5:**
   - Redis query-embedding cache (2.6 s → 30–60 ms on a repeat).
   - Local-embedding spike, then the full bge-base trial: not adopted
@@ -76,8 +80,9 @@ These gate everything below. Nothing in Day 1 is verifiable until the first two 
 - [ ] **B** Protect `main` on each repo. *Was blocked (403: private repos need a paid plan).
   `querydesk-orchestrator` is public as of 2026-10-17 and `main` is unprotected, so this can be
   done now. Until then, the PR-and-review rule is enforced by agreement only.*
-- [ ] **B** Approve API contract **v1.1** in `querydesk-docs` before either service builds on it.
-  **Now the critical path** — the Day 4 ticketing client and Checkpoint 1 depend on it.
+- [~] **B** Approve API contract **v1.1** in `querydesk-docs` before either service builds on it.
+  *Written 2026-10-17 as `openapi.yaml` (querydesk-docs PR #1); waiting on the partner's review.
+  Orchestrator PR #16 aligns with it: integer webhook `sr_id`, paginated `GET /sr`.*
   The four additions: `Idempotency-Key` on `POST /sr`; `updated_since` filter on `GET /sr`;
   `metadata.extend_until` → `revert_at` for `it_uat_extension`; signed
   `POST {orchestrator}/webhooks/sr-status` webhook (HMAC-SHA256, `X-Signature`, 5 retries).
@@ -191,7 +196,9 @@ These gate everything below. Nothing in Day 1 is verifiable until the first two 
   `router_min_score` 0.43 sits between an in-scope 0.439 and an out-of-scope 0.430, which is too
   tight to trust on 60 rows. *Done: 83 rows; `router_min_score` re-calibrated to 0.46 — every
   action request clears it.*
-- [ ] **B** Move `eval/eval_set.jsonl` to `querydesk-docs` once that repo has its first commit.
+- [x] **B** Move `eval/eval_set.jsonl` to `querydesk-docs` once that repo has its first commit.
+  *Done 2026-10-17: seeded on querydesk-docs `main` with the PRD and `categories.json`. The
+  orchestrator keeps a synced copy; querydesk-docs is the source of truth.*
 
 ---
 
@@ -363,7 +370,8 @@ Detail in [plan-day-7.md](plan-day-7.md).
   against the real service.*
 - [ ] **T** Measure an idle worker's Upstash command use on the dashboard (INFO counters are
   unreliable on Upstash).
-- [ ] **T** Write the webhook signature format into contract v1.1 (`querydesk-docs`).
+- [x] **T** Write the webhook signature format into contract v1.1 (`querydesk-docs`). *In
+  `openapi.yaml`: lowercase hex HMAC-SHA256 of the raw body, no prefix, with a worked example.*
 - [ ] **P** Postman collection that plays the approver; seed data.
 
 ### Day 8 — chat page
@@ -381,14 +389,16 @@ Detail in [plan-day-8.md](plan-day-8.md).
 ### Day 9 — demo scenarios · **Checkpoint 3**
 *Done when: all 10 scenarios pass.*
 - [ ] **B** Run the 10 demo scenarios together (one end-to-end run per category); fix bugs.
-- [ ] **T** Final eval report (the PRD's "eval report v1"; v0–v2 already exist). Record the
-  first-message p95 > 3 s on qwen3 with the query cache as mitigation
-  ([embedding-trial.md](embedding-trial.md)). **P** Contract
-  tests against the OpenAPI file.
+- [~] **T** Final eval report (the PRD's "eval report v1"; v0–v2 already exist). *Drafted as
+  `docs/eval-report-v3.md` (PR #17): every target measured except answer support, which waits on
+  the hand judgement in `docs/answer-support-v1.md`. The latency miss is recorded (p95 7.9 s end
+  to end).* **P** Contract tests against the OpenAPI file.
 
 ### Day 10 — ship
 *Done when: v1.0 tagged and live.*
-- [ ] **T** READMEs crediting both people, architecture diagram, demo video; smoke-test the live site.
+- [~] **T** READMEs crediting both people, architecture diagram, demo video; smoke-test the live site.
+  *Orchestrator README done (PR #17, partner's name still to fill in). The demo video and smoke
+  test need the deployed site.*
 - [ ] **P** EC2 t3.medium setup, Compose deploy, secrets, smoke test.
 
 ---
