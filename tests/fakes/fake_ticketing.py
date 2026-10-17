@@ -1,5 +1,5 @@
 r"""
-A stand-in for the partner's ticketing service, built to contract v1.1
+A stand-in for the ticketing service, built to contract v1.1
 (openapi.yaml in querydesk-docs).
 
 It exists so the orchestrator can be tested end to end before the real

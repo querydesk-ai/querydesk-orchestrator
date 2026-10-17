@@ -128,7 +128,7 @@ class Settings(BaseSettings):
     decision_engine: str = "rules"
 
     # --- Ticketing service -------------------------------------------------
-    # The partner's Spring Boot service. Until it exists, run the stand-in:
+    # The Spring Boot ticketing service. Until it is deployed, run the stand-in:
     # uv run uvicorn tests.fakes.fake_ticketing:app --port 8081
     ticketing_base_url: str = ""
     ticketing_timeout_s: float = 10.0

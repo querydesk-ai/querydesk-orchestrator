@@ -1,6 +1,6 @@
 """
-The only module that talks to the ticketing service (the partner's Spring
-Boot service, PRD contract v1.1). Nothing else may call it directly.
+The only module that talks to the ticketing service (Spring Boot, contract
+v1.1). Nothing else may call it directly.
 
 Built to the PRD's contract until the OpenAPI file lands in querydesk-docs:
   POST /sr       Idempotency-Key header; 201 = created, 200 = replay of the original
