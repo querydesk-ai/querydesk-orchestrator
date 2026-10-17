@@ -12,7 +12,7 @@ QueryDesk is two services, built by two people, behind one API contract:
 | Repo | What it does | Built by |
 | --- | --- | --- |
 | **querydesk-orchestrator** (this repo) | Chat API, hybrid retrieval and cited answers, category router, decision layer, slot filling, ticketing client, signed-webhook receiver, Celery notifications, chat page, eval tooling | **Tanmay Kayande** |
-| [querydesk-ticketing](https://github.com/querydesk-ai/querydesk-ticketing) | Spring Boot 3 / Java 21 SR service: status state machine, idempotent creation, webhook outbox with retries, UAT auto-revert | **[partner's name]** |
+| [querydesk-ticketing](https://github.com/querydesk-ai/querydesk-ticketing) | Spring Boot 3 / Java 21 SR service: status state machine, idempotent creation, webhook outbox with retries, UAT auto-revert | **Partner** |
 | [querydesk-docs](https://github.com/querydesk-ai/querydesk-docs) | PRD, the OpenAPI contract (`openapi.yaml`), `categories.json`, the eval set | Both |
 
 The services share nothing but the contract and `categories.json`. Neither reads the other's
