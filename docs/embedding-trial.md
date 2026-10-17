@@ -99,9 +99,10 @@ Search latency by row position, over the three runs:
 
 **Also found: BM25 model load on the first query.** Row 1's embed took 2.1 s on bge even after
 the dense model was warmed. That cost is the BM25 (`Qdrant/bm25`) sparse model loading on its
-first use, and the app pays it on the first `/chat` after every boot, on either backend. A
-one-line warm-up of the sparse model in the lifespan hook would remove it. It isn't done in this
-branch; it's noted for Day 9.
+first use, and the app paid it on the first `/chat` after every boot, on either backend.
+**Fixed in this branch:** the lifespan hook now loads it (`sparse.warm_up()`). The first BM25
+query went from 1.6 s to 1 ms, and startup takes about 2.7 s longer. A failed load is logged, and
+the model then loads on first use as before.
 
 **On the local backend, the query cache can cost more than it saves.** In the live `/verify` run
 on bge, one embed step took 4.1 s with no Redis error logged, so the time went on Upstash round
@@ -113,7 +114,7 @@ The qwen3 answer path at p95 is roughly embed 2.4 s + search ~1.0 s + generation
 with search and route overlapping, that's above 3 s for first-time messages. Mitigations:
 
 - the Redis query cache (30–60 ms on a repeated message);
-- the BM25 warm-up above.
+- the BM25 warm-up above (shipped).
 
 The miss goes into the Day 9 final eval report as a known limitation.
 
@@ -130,12 +131,12 @@ The replay over the qwen3 run gives:
 | 0.56 / 0.56 / 0.46 | 95.7% | 17/18 | 0% | 0 |
 
 - **`router_min_score` 0.48: rejected.** It costs one action row and gains nothing.
-- **`confidence_mid`: kept at 0.49 for now.**
+- **`confidence_mid`: kept at 0.49** (decided 2026-10-17).
   - Raising it to 0.56 doesn't change accuracy. It swaps two error-code questions (inf-02
     PWD-1407 at 0.495, inf-19 CRM-5503 at 0.511) from a disclaimer answer to escalation. In return,
     two out-of-scope messages (oos-03, oos-14) escalate instead of getting a disclaimer answer.
-  - It's a product call: is a lost answer to a real question worse than a disclaimer answer to
-    an out-of-scope one? It is left for an explicit decision, not made by default.
+  - Decision: keep answering the error-code questions. A disclaimer answer to an out-of-scope
+    message is the accepted cost.
 
 ## Rollback / re-trial
 

@@ -40,11 +40,11 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
   (94 rows) 96% routing, 0% action answered, 6/6 status rows.
 - **bge-base trial done, not adopted** ([embedding-trial.md](embedding-trial.md)): 30× faster
   embed (68 ms p50) but routing ≤ 91.5% at any thresholds and out-of-scope messages reach the SR
-  path. `embed_backend` switch merged, set to `fireworks`. qwen3 thresholds unchanged;
-  `confidence_mid` 0.49 vs 0.56 is an open product call (same accuracy, different failure).
+  path. `embed_backend` switch merged, set to `fireworks`. qwen3 thresholds unchanged
+  (`confidence_mid` stays 0.49 by decision; `router_min_score` 0.48 rejected).
 - **Known limitation for the Day 9 report:** first-time-message answer path p95 is above 3 s on
-  qwen3 (embed ~2.4 s); mitigated by the Redis query cache. Warm the BM25 model at startup (first
-  `/chat` after boot pays ~2 s loading it).
+  qwen3 (embed ~2.4 s); mitigated by the Redis query cache. The BM25 model now loads at startup,
+  so the first `/chat` after a boot no longer pays ~1.6 s for it.
 - **Next up:** contract v1.1, then the Day 9 demo scenarios.
 - **PR hygiene:** turn on "Automatically delete head branches" in the repo settings. Two stacked
   PRs (#6, #8) merged into their base branch instead of `main`.

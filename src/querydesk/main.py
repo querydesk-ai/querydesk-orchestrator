@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 
 from querydesk.api.routes import chat, health, notifications, webhooks
 from querydesk.core.errors import VectorStoreError
+from querydesk.services.retrieval import sparse
 from querydesk.services.retrieval.qdrant_store import ensure_collections
 from querydesk.services.state import postgres_store, redis_store
 from querydesk.services.ticketing import client as ticketing
@@ -36,11 +37,19 @@ async def lifespan(app: FastAPI):
     A Qdrant failure is logged, not raised: the process still starts and
     /health/ready reports the problem. Hard-failing here would mean a
     transient Qdrant blip during a deploy leaves nothing running at all.
+
+    The BM25 model is loaded here too, so the first /chat after a start doesn't
+    spend ~2 s loading it (docs/embedding-trial.md). A failure is logged and the
+    model loads lazily on first use instead.
     """
     try:
         await ensure_collections()
     except VectorStoreError as e:
         logger.error("Qdrant not ready at startup: %s", e)
+    try:
+        await sparse.warm_up()
+    except Exception as e:
+        logger.error("BM25 model not loaded at startup, will load on first use: %s", e)
     yield
     await ticketing.aclose()
     await redis_store.aclose()
