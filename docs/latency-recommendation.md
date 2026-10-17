@@ -1,5 +1,10 @@
 # Embedding latency: recommendation (Day 5)
 
+> **Outcome (2026-10-17):** the bge-base trial ran through the full decision layer and **failed**:
+> routing at best 91.5% at any thresholds, out-of-scope messages pass the router, act-14 still goes
+> to `it_uat_extension`. Staying on qwen3 + the cache. Search-tail finding and numbers in
+> [embedding-trial.md](embedding-trial.md).
+
 **Decision: keep `qwen3-embedding-8b` with the Redis query cache for now. `BAAI/bge-base-en-v1.5`
 is the only local model worth a trial, and it must pass a full decision-layer eval before it
 replaces qwen3.** Decide before Day 8.

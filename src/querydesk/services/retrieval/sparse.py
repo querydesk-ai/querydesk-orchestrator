@@ -66,3 +66,12 @@ async def sparse_embed_query_async(text: str) -> models.SparseVector:
 async def sparse_embed_documents_async(texts: list[str]) -> list[models.SparseVector]:
     """Document-embed off the event loop."""
     return await anyio.to_thread.run_sync(sparse_embed_documents, texts)
+
+
+async def warm_up() -> None:
+    """
+    Load the model now, off the event loop. The first load reads the weights
+    (~2 s, plus a download on a fresh machine); called at app start so a
+    user's first message doesn't pay it.
+    """
+    await anyio.to_thread.run_sync(_get_model)

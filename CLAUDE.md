@@ -78,7 +78,8 @@ Everything after SR creation is async (webhook → Redis → Celery).
 ### Module conventions
 
 - **One module owns each external dependency**, and nothing else may talk to it directly:
-  `services/llm/fireworks.py` (LLM + embeddings), `services/retrieval/qdrant_store.py` (vector
+  `services/llm/fireworks.py` (LLM + embeddings), `services/llm/local_embed.py` (the local
+  fastembed dense model), `services/retrieval/qdrant_store.py` (vector
   search), `services/retrieval/sparse.py` (BM25), `services/ticketing/client.py` (the ticketing
   service), `services/state/redis_store.py` (Redis), `services/state/postgres_store.py` (the
   orchestrator's Neon DB), `services/llm/jev.py` (Jev, via JevStation).
@@ -160,6 +161,11 @@ Query: <text>`). Always use `embed_documents()` / `embed_query()`, never
    `embed_text()` on raw text, and never add the old `search_document:` / `search_query:` prefixes.
    It emits 4096 dims (`embed_dim`). Changing the model means re-running `ingest.py --recreate`;
    `ensure_collections()` refuses to start against a collection of the wrong size.
+   Dense embeddings go through `services/retrieval/embedding.py`, which dispatches on
+   `embed_backend`: `fireworks` (default) or `local` (bge-base, 768 dims, queries prefixed with
+   `LOCAL_QUERY_PREFIX`, documents as-is; own collections `*_bge768`). bge was trialled and **not
+   adopted** — `docs/embedding-trial.md`. The query cache keys on `settings.embed_model_id`, so the
+   backends never share vectors.
 
 3. **`data/categories.json` is the single source of truth** for the 10 categories — ids, approval
    rules and required fields — shared with the ticketing service. Never hardcode a category id,
