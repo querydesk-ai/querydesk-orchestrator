@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ResolutionType(StrEnum):
@@ -69,7 +69,12 @@ class SRStatusEvent(BaseModel):
     The ticketing service's status webhook body (PRD contract v1.1,
     POST {orchestrator}/webhooks/sr-status). Only `sr_id`, `user_id` and
     `to_status` drive the notification; the rest is carried for the log.
+
+    The contract sends `sr_id` as an integer; it is kept as a string here, as
+    everywhere in the orchestrator, so numbers are coerced rather than rejected.
     """
+
+    model_config = ConfigDict(coerce_numbers_to_str=True)
 
     sr_id: str
     user_id: str

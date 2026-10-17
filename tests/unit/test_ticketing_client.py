@@ -216,7 +216,9 @@ async def test_list_open_srs_filters_closed_ones():
     open_srs = await tk.list_open_srs("u1")
 
     assert [r.id for r in open_srs] == ["1001", "1003"]
-    assert route.calls.last.request.url.params["user_id"] == "u1"
+    params = route.calls.last.request.url.params
+    assert params["user_id"] == "u1"
+    assert params["status"] == "PENDING,APPROVED,IN_PROGRESS"
 
 
 @pytest.mark.anyio
@@ -393,9 +395,74 @@ async def test_stand_in_sends_a_signed_webhook_on_each_status_change(monkeypatch
     [request] = received
     assert signing.verify(request.content, request.headers[signing.SIGNATURE_HEADER])
     event = json.loads(request.content)
-    assert event["sr_id"] == created.id and event["user_id"] == "u1"
+    # Contract v1.1 sends the id as an integer.
+    assert event["sr_id"] == int(created.id) and event["user_id"] == "u1"
     assert (event["from_status"], event["to_status"], event["note"]) == (
         "PENDING",
         "APPROVED",
         "ok",
     )
+
+
+def _page(items, page, total_pages):
+    return {
+        "items": items,
+        "page": page,
+        "size": tk.PAGE_SIZE,
+        "total_items": 999,
+        "total_pages": total_pages,
+    }
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_list_reads_every_page_of_the_v1_1_envelope():
+    route = respx.get(f"{BASE}/sr").mock(
+        side_effect=[
+            httpx.Response(200, json=_page([SR_BODY], 0, 2)),
+            httpx.Response(200, json=_page([{**SR_BODY, "id": 1002}], 1, 2)),
+        ]
+    )
+
+    records = await tk.list_updated_since(datetime(2026, 10, 16, tzinfo=UTC))
+
+    assert [r.id for r in records] == ["1001", "1002"]
+    pages = [call.request.url.params for call in route.calls]
+    assert [p["page"] for p in pages] == ["0", "1"]
+    assert all(p["size"] == str(tk.PAGE_SIZE) for p in pages)
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_an_empty_envelope_is_one_request():
+    route = respx.get(f"{BASE}/sr").mock(return_value=httpx.Response(200, json=_page([], 0, 0)))
+
+    assert await tk.list_open_srs("u1") == []
+    assert route.call_count == 1
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_a_paging_loop_that_never_ends_is_an_error(monkeypatch):
+    monkeypatch.setattr(tk, "MAX_PAGES", 3)
+    respx.get(f"{BASE}/sr").mock(return_value=httpx.Response(200, json=_page([SR_BODY], 0, 99)))
+
+    with pytest.raises(tk.TicketingError, match="3 pages"):
+        await tk.list_open_srs("u1")
+
+
+@pytest.mark.anyio
+async def test_stand_in_lists_in_the_v1_1_envelope_with_a_status_filter():
+    app = create_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url=BASE) as c:
+        for i in range(3):
+            body = {**SR.__dict__, "description": f"r{i}"}
+            await c.post("/sr", json=body, headers={"Idempotency-Key": f"{i:032x}"})
+        await c.patch("/sr/1001/status", json={"status": "IN_PROGRESS", "changed_by": "ops"})
+        await c.patch("/sr/1001/status", json={"status": "RESOLVED"})
+
+        page = (await c.get("/sr", params={"status": "PENDING,IN_PROGRESS", "size": 1})).json()
+
+    assert page["total_items"] == 2 and page["total_pages"] == 2
+    assert [sr["id"] for sr in page["items"]] == [1002]

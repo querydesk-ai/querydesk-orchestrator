@@ -1,5 +1,6 @@
 r"""
-A stand-in for the partner's ticketing service, built to PRD contract v1.1.
+A stand-in for the ticketing service, built to contract v1.1
+(openapi.yaml in querydesk-docs).
 
 It exists so the orchestrator can be tested end to end before the real
 Spring Boot service does: in-process in tests (via ASGITransport) and as a
@@ -25,7 +26,7 @@ from datetime import UTC, datetime
 from itertools import count
 
 import httpx
-from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Response
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
 from querydesk.core.config import settings
@@ -55,6 +56,7 @@ class SRIn(BaseModel):
 class StatusIn(BaseModel):
     status: str
     note: str | None = None
+    changed_by: str | None = None
 
 
 async def send_webhook(
@@ -137,7 +139,7 @@ def create_app(
         record["updated_at"] = datetime.now(UTC).isoformat()
         if webhook_url:
             event = {
-                "sr_id": str(sr_id),
+                "sr_id": sr_id,
                 "user_id": record["user_id"],
                 "from_status": current,
                 "to_status": target,
@@ -149,15 +151,33 @@ def create_app(
 
     @app.get("/sr")
     def list_srs(
-        user_id: str | None = None, status: str | None = None, updated_since: datetime | None = None
-    ) -> list[dict]:
-        return [
-            r
-            for r in store.values()
-            if (user_id is None or r["user_id"] == user_id)
-            and (status is None or r["status"] == status)
-            and (updated_since is None or datetime.fromisoformat(r["updated_at"]) >= updated_since)
-        ]
+        user_id: str | None = None,
+        status: str | None = None,
+        updated_since: datetime | None = None,
+        page: int = Query(default=0, ge=0),
+        size: int = Query(default=50, ge=1, le=200),
+    ) -> dict:
+        statuses = set(status.split(",")) if status else None
+        matches = sorted(
+            (
+                r
+                for r in store.values()
+                if (user_id is None or r["user_id"] == user_id)
+                and (statuses is None or r["status"] in statuses)
+                and (
+                    updated_since is None
+                    or datetime.fromisoformat(r["updated_at"]) >= updated_since
+                )
+            ),
+            key=lambda r: (r["updated_at"], r["id"]),
+        )
+        return {
+            "items": matches[page * size : (page + 1) * size],
+            "page": page,
+            "size": size,
+            "total_items": len(matches),
+            "total_pages": -(-len(matches) // size),
+        }
 
     return app
 

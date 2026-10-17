@@ -17,8 +17,8 @@ QueryDesk is two services behind one contract:
 
 | Repo | Contents | Owner |
 | --- | --- | --- |
-| `querydesk-orchestrator` | **this repo** — FastAPI, RAG, router, decision layer, Celery, chat page | Tanmay |
-| `querydesk-ticketing` | Spring Boot 3 / Java 21 ticketing service, migrations, webhook outbox | Partner |
+| `querydesk-orchestrator` | **this repo** — FastAPI, RAG, router, decision layer, Celery, chat page | Orchestrator team |
+| `querydesk-ticketing` | Spring Boot 3 / Java 21 ticketing service, migrations, webhook outbox | Ticketing team |
 | `querydesk-docs` | PRD, OpenAPI contract, `categories.json`, eval set | Both |
 
 **Contract first:** no endpoint or field change without a PR in `querydesk-docs` approved by the
@@ -48,7 +48,7 @@ uv run scripts/eval_report.py               # proposals + docs/eval-report-lates
 uv run scripts/eval_report.py --out docs/eval-report-vN.md --title "Eval report vN"   # publish one
 uv run --with psutil scripts/latency_spike.py   # local embedding models vs qwen3 (in-memory Qdrant)
 
-# Stand-in for the partner's ticketing service (PRD contract v1.1), until it exists:
+# Stand-in for the ticketing service (contract v1.1), until it is deployed:
 uv run uvicorn tests.fakes.fake_ticketing:app --port 8081
 TICKETING_BASE_URL=http://127.0.0.1:8081 uv run uvicorn querydesk.main:app --reload
 
@@ -202,9 +202,11 @@ through JevStation, so **the rule engine is the default and Jev is not on the `/
 from tests (mock it with respx) and run `scripts/jev_compare.py` with a `--budget`. Its cache under
 `eval/results/jev_cache/` makes re-runs free.
 
-Until the partner's ticketing service exists, `tests/fakes/fake_ticketing.py` implements the PRD
-v1.1 contract (idempotency key, 400 on an unknown category) for tests and manual runs. Field names
-follow the PRD — re-check them against the OpenAPI file once it lands in `querydesk-docs`.
+The contract is `openapi.yaml` in `querydesk-docs` (v1.1; querydesk-docs PR #1). Until the
+ticketing service is deployed, `tests/fakes/fake_ticketing.py` implements it for tests and
+manual runs: idempotency key, 400 on an unknown category, the paginated `GET /sr` envelope (which
+`client._list()` reads page by page and also accepts as a plain list), and integer `sr_id`s in
+webhooks (`SRStatusEvent` coerces them to strings).
 
 ## Data stores
 

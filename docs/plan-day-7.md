@@ -82,4 +82,4 @@ Celery beat, every 10 min
 
 - `GET /notifications` and marking them read: Day 8.
 - Contract v1.1 text for the webhook (above) in `querydesk-docs`.
-- Re-check field names against the partner's OpenAPI file once it lands.
+- Re-check field names against the OpenAPI contract once it lands.

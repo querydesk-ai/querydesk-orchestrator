@@ -1,7 +1,7 @@
 # Plan — Days 4 and 5 (orchestrator lane)
 
 Written 2026-10-11, after Days 1–3 merged (PR #1). Scope is the orchestrator lane only. The
-partner's ticketing service doesn't exist yet, so Day 4 is built and tested against a **local
+ticketing service doesn't exist yet, so Day 4 is built and tested against a **local
 stand-in** that implements the PRD's v1.1 contract (`tests/fakes/fake_ticketing.py`). When the real
 service lands, only `TICKETING_BASE_URL` changes.
 

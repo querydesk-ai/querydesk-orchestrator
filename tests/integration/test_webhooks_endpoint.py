@@ -102,3 +102,15 @@ async def test_no_broker_configured_is_503(client):
     body = json.dumps(EVENT).encode()
 
     assert (await _post(client, body, signing.sign(body))).status_code == 503
+
+
+@pytest.mark.anyio
+async def test_an_integer_sr_id_from_the_contract_is_accepted(client, queued):
+    # Contract v1.1 sends sr_id as an integer; it used to be rejected with 422.
+    body = json.dumps({**EVENT, "sr_id": 1001}).encode()
+
+    resp = await _post(client, body, signing.sign(body))
+
+    assert resp.status_code == 202
+    [event] = queued
+    assert event.sr_id == "1001"

@@ -141,7 +141,7 @@ async def _srs(world):
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=world.service), base_url="http://ticketing.test"
     ) as c:
-        return (await c.get("/sr")).json()
+        return (await c.get("/sr")).json()["items"]
 
 
 # --- The SR path ---------------------------------------------------------------

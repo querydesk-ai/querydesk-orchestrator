@@ -1,15 +1,15 @@
 """
-The only module that talks to the ticketing service (the partner's Spring
-Boot service, PRD contract v1.1). Nothing else may call it directly.
+The only module that talks to the ticketing service (Spring Boot, contract
+v1.1). Nothing else may call it directly.
 
 Built to the PRD's contract until the OpenAPI file lands in querydesk-docs:
   POST /sr       Idempotency-Key header; 201 = created, 200 = replay of the original
   GET  /sr/{id}       404 = no such SR (None, not an error)
-  GET  /sr?user_id=…   a user's SRs (the duplicate check, PRD F5)
+  GET  /sr?user_id=…&status=…   a user's open SRs (the duplicate check, PRD F5)
   GET  /sr?updated_since=…   SRs changed since a time (the Day 7 reconciliation poll)
-Statuses follow the PRD state machine; RESOLVED, REJECTED and REVERTED are final.
-Field names follow the PRD's service_requests table — re-check them against
-the OpenAPI file when it exists.
+GET /sr is paginated ({items, page, size, total_items, total_pages}); every
+page is read. Statuses follow the PRD state machine; RESOLVED, REJECTED and
+REVERTED are final. The contract is openapi.yaml in querydesk-docs (v1.1).
 """
 
 import hashlib
@@ -49,8 +49,12 @@ STATUS_RANK = {
     "RESOLVED": 3,
     "REVERTED": 4,
 }
+OPEN_STATUSES = ("PENDING", "APPROVED", "IN_PROGRESS")
 # How many closed SRs create_sr will step past for one key in one day.
 MAX_REOPENS = 10
+# GET /sr page size (the contract's maximum) and a stop for a runaway paging loop.
+PAGE_SIZE = 200
+MAX_PAGES = 100
 
 
 @dataclass
@@ -213,23 +217,39 @@ async def get_sr(sr_id: str) -> SRRecord | None:
 
 
 async def _list(params: dict[str, str]) -> list[SRRecord]:
-    client = _get_client()
-    try:
-        resp = await client.get("/sr", params=params)
-    except httpx.HTTPError as e:
-        raise TicketingError(f"Ticketing service unreachable: {e}") from e
+    """
+    Every SR matching `params`, across all pages.
 
-    if resp.status_code != 200:
-        raise TicketingError(f"Ticketing list failed: {resp.status_code} {resp.text[:200]}")
-    try:
-        return [_from_body(body) for body in resp.json()]
-    except (ValueError, KeyError, TypeError) as e:
-        raise TicketingError(f"Ticketing response was malformed: {resp.text[:200]}") from e
+    A plain JSON list (the pre-v1.1 shape) is accepted as one complete page,
+    so the switch to the paginated envelope doesn't need both services to
+    deploy at once.
+    """
+    client = _get_client()
+    records: list[SRRecord] = []
+    for page in range(MAX_PAGES):
+        try:
+            resp = await client.get("/sr", params={**params, "page": page, "size": PAGE_SIZE})
+        except httpx.HTTPError as e:
+            raise TicketingError(f"Ticketing service unreachable: {e}") from e
+
+        if resp.status_code != 200:
+            raise TicketingError(f"Ticketing list failed: {resp.status_code} {resp.text[:200]}")
+        try:
+            body = resp.json()
+            if isinstance(body, list):
+                return [_from_body(item) for item in body]
+            records.extend(_from_body(item) for item in body["items"])
+            if page + 1 >= int(body["total_pages"]):
+                return records
+        except (ValueError, KeyError, TypeError) as e:
+            raise TicketingError(f"Ticketing response was malformed: {resp.text[:200]}") from e
+    raise TicketingError(f"Ticketing list did not end after {MAX_PAGES} pages")
 
 
 async def list_open_srs(user_id: str) -> list[SRRecord]:
     """The user's SRs that aren't closed yet (not in TERMINAL_STATUSES)."""
-    records = await _list({"user_id": user_id})
+    records = await _list({"user_id": user_id, "status": ",".join(OPEN_STATUSES)})
+    # Filtered again here in case the service ignores the status parameter.
     return [r for r in records if r.status not in TERMINAL_STATUSES]
 
 
