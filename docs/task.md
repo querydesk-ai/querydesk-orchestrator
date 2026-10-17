@@ -17,8 +17,8 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
 - **What's left, in order:**
   1. **Partner:** review and merge contract v1.1 (querydesk-docs PR #1). Orchestrator PR #16
      already follows it.
-  2. **Tanmay:** judge the 20 answers in `docs/answer-support-v1.md` (target 18 of 20), fill in
-     the summary row of eval report v3, and put the partner's name in the README (PR #17).
+  2. **Tanmay:** merge PR #17 (eval report v3 + README). The answer support check is done: 18 of
+     20, two judges agreeing.
   3. **Partner:** push the real ticketing service, then repeat Checkpoints 1–2 against it.
   4. **Day 9, together:** the 10 demo scenarios.
   5. **Day 10:** deploy (partner), then the demo video and a smoke test of the live site (Tanmay).
@@ -397,7 +397,7 @@ Detail in [plan-day-8.md](plan-day-8.md).
 ### Day 10 — ship
 *Done when: v1.0 tagged and live.*
 - [~] **T** READMEs crediting both people, architecture diagram, demo video; smoke-test the live site.
-  *Orchestrator README done (PR #17, partner's name still to fill in). The demo video and smoke
+  *Orchestrator README done (PR #17; the partner is credited as "Partner"). The demo video and smoke
   test need the deployed site.*
 - [ ] **P** EC2 t3.medium setup, Compose deploy, secrets, smoke test.
 
