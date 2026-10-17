@@ -9,13 +9,19 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
 
 ## Where we are — 2026-10-17
 
-- **Orchestrator lane: Days 1–6 done.** Eval v2 (87 rows): **routing accuracy 97%** (target
-  ≥ 90%), **action requests answered with an article 0%** (target ≤ 5%), SR-bound category
-  accuracy 100% — `docs/eval-report-v2.md`.
+- **Orchestrator lane: Days 1–8 done and merged (PRs #1–#14), plus the embedding trial.**
+  Latest eval (94 rows, 2026-10-17): **routing accuracy 96%** (target ≥ 90%), **action requests
+  answered with an article 0%** (target ≤ 5%), SR-bound category accuracy 100%, status rows 6/6.
+  Last published report: `docs/eval-report-v2.md`; the final one is a Day 9 item.
+- **What's left, in order:**
+  1. Contract v1.1 in `querydesk-docs` (Tanmay): the critical path for the partner.
+  2. The real ticketing service pushed (partner), then Checkpoints 1–2 repeated against it.
+  3. Day 9: the 10 demo scenarios together and the final eval report.
+  4. Day 10: deploy (partner), READMEs and demo video (Tanmay).
 - **Day 5:**
   - Redis query-embedding cache (2.6 s → 30–60 ms on a repeat).
-  - Local-embedding spike: keep qwen3 for now, trial bge-base before Day 8
-    ([latency-recommendation.md](latency-recommendation.md)).
+  - Local-embedding spike, then the full bge-base trial: not adopted
+    ([embedding-trial.md](embedding-trial.md)).
   - Jev vs rules on the full eval set: **rules 97%, Jev 91%**, and Jev takes 3.5–7 s per call. Jev
     is kept as an **offline benchmark, not a fallback** ([jev-notes.md](jev-notes.md)). 22
     JevStation credits remain (they expire 2026-11-14), so don't spend them.
@@ -27,27 +33,30 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
   - CI is green; the gitleaks licence secret is set.
   - Redis is reached over `REDIS_URL` (`rediss://` native protocol to Upstash, not its REST API).
   - Postgres (Neon) holds `sr_requests` (`scripts/migrate.py`, 001 applied 2026-10-15).
-- **Day 6 (slot filling) done** on `feat/day6-slot-filling`. Verified live (stand-in ticketing,
+- **Day 6 (slot filling) done**, merged in PRs #10 and #11. Verified live (stand-in ticketing,
   Fireworks, Upstash, Neon): "keep UAT-2 up for release testing" → asks for extend until → "till
   11 PM" → SR with approval, a row in `sr_requests`; the resend gets "already open"; out of scope →
   "flagged", with a `MANUAL_ESCALATION` row.
-- **Day 7 (notifications) done** on `feat/day7-notifications` ([plan-day-7.md](plan-day-7.md)).
+- **Day 7 (notifications) done**, merged in PR #12 ([plan-day-7.md](plan-day-7.md)).
   **Checkpoint 2 met against the stand-in:** approve in its Swagger → notification row in Neon in
   ~6 s; replayed webhook writes nothing; a webhook lost while the orchestrator was down is caught by
   `reconcile`. Migration 002 applied 2026-10-16.
-- **Day 8 (status questions, notifications API, chat page) done** on
-  `feat/day8-status-chat-page` ([plan-day-8.md](plan-day-8.md)). Verified live in Chrome; eval
+- **Day 8 (status questions, notifications API, chat page) done**, merged in PR #13
+  ([plan-day-8.md](plan-day-8.md)). Verified live in Chrome; eval
   (94 rows) 96% routing, 0% action answered, 6/6 status rows.
 - **bge-base trial done, not adopted** ([embedding-trial.md](embedding-trial.md)): 30× faster
   embed (68 ms p50) but routing ≤ 91.5% at any thresholds and out-of-scope messages reach the SR
-  path. `embed_backend` switch merged, set to `fireworks`. qwen3 thresholds unchanged
+  path. Merged in PR #14: the `embed_backend` switch, set to `fireworks`. qwen3 thresholds unchanged
   (`confidence_mid` stays 0.49 by decision; `router_min_score` 0.48 rejected).
 - **Known limitation for the Day 9 report:** first-time-message answer path p95 is above 3 s on
   qwen3 (embed ~2.4 s); mitigated by the Redis query cache. The BM25 model now loads at startup,
   so the first `/chat` after a boot no longer pays ~1.6 s for it.
 - **Next up:** contract v1.1, then the Day 9 demo scenarios.
-- **PR hygiene:** turn on "Automatically delete head branches" in the repo settings. Two stacked
-  PRs (#6, #8) merged into their base branch instead of `main`.
+- **Repo housekeeping (checked 2026-10-17):**
+  - "Automatically delete head branches" is still **off**. Ten merged branches remain on GitHub
+    (e.g. `feat/day6-slot-filling`, `feat/embed-backend-trial`).
+  - Two stacked PRs (#6, #8) merged into their base branch instead of `main`.
+  - The repo is now **public**, so branch protection on `main` should now work (see Day 0).
 
 ---
 
@@ -64,9 +73,9 @@ These gate everything below. Nothing in Day 1 is verifiable until the first two 
   *Blocks: ingestion has nothing to index. This is content work, not code.*
 - [x] **B** Create the GitHub org (`querydesk-ai`) and the three repos (`querydesk-orchestrator`,
   `querydesk-ticketing`, `querydesk-docs`). *All three exist; ticketing and docs are still empty.*
-- [!] **B** Protect `main` on each repo. *Blocked: GitHub returns 403 — branch protection on
-  private repos needs a paid plan (Team/Pro) or public repos. Until then, the PR-and-review rule is
-  enforced by agreement only.*
+- [ ] **B** Protect `main` on each repo. *Was blocked (403: private repos need a paid plan).
+  `querydesk-orchestrator` is public as of 2026-10-17 and `main` is unprotected, so this can be
+  done now. Until then, the PR-and-review rule is enforced by agreement only.*
 - [ ] **B** Approve API contract **v1.1** in `querydesk-docs` before either service builds on it.
   **Now the critical path** — the Day 4 ticketing client and Checkpoint 1 depend on it.
   The four additions: `Idempotency-Key` on `POST /sr`; `updated_since` filter on `GET /sr`;
@@ -166,17 +175,18 @@ These gate everything below. Nothing in Day 1 is verifiable until the first two 
 - [x] **T** Calibration script that sets `confidence_high` / `confidence_mid` from the eval set.
   *`scripts/eval_run.py` + `scripts/eval_report.py` → `docs/eval-report-v0.md`. Calibrated:
   high 0.56, mid 0.49, router_min 0.43. SR-bound category accuracy 100% (target ≥ 90%).*
-- [~] **T** CI secrets scan: PR #1 switched to the MIT gitleaks CLI; a later commit went back to
-  `gitleaks-action@v3`, which needs a `GITLEAKS_LICENSE` secret (free key from gitleaks.io for org
-  repos). *Add the secret — until then the `secrets` job fails on every run.*
+- [x] **T** CI secrets scan: `gitleaks-action@v3` with a `GITLEAKS_LICENSE` secret. *The secret
+  is set; the `secrets` job passes on every run (last checked on PR #14, 2026-10-17).*
 - [ ] **P** Status state machine, `PATCH /sr/{id}/status`, 409 on invalid moves, status history;
   a unit test per transition.
 
 ### Day 3 follow-ups (carry forward)
 
-- [!] **T** **Latency risk:** dense embedding is 1.6–2.2 s per query, so the answer path can't meet
-  p95 < 3 s (generation adds ~1.2 s). Decide before Day 8: a local CPU embedding model via fastembed
-  (needs `--recreate` and a re-calibration), caching repeated queries, or a faster hosted model.
+- [x] **T** **Latency risk:** dense embedding is 1.6–2.2 s per query, so the answer path can't meet
+  p95 < 3 s (generation adds ~1.2 s). *Decided: a Redis query cache shipped (Day 5); the local
+  bge-base model was trialled and not adopted; the first BM25 load moved to startup. A first-time
+  message still misses p95 < 3 s on qwen3, which is recorded as a known limitation for the final
+  eval report ([embedding-trial.md](embedding-trial.md)).*
 - [x] **T** Grow the eval set with near-miss rows before the Day 5 re-calibration —
   `router_min_score` 0.43 sits between an in-scope 0.439 and an out-of-scope 0.430, which is too
   tight to trust on 60 rows. *Done: 83 rows; `router_min_score` re-calibrated to 0.46 — every
@@ -263,9 +273,9 @@ score ≥ high).
 
 ### Jev and the checkpoint
 
-- [ ] **T** *(moved to Day 5)* Jev Playground session: confirm the real request/response shape for the three questions
+- [x] **T** *(moved to Day 5)* Jev Playground session: confirm the real request/response shape for the three questions
   (action? existing request? does the top article answer it — probability) and write it down in
-  `docs/`. `TYPESAFE_API_KEY` is first used here.
+  `docs/`. *Done on Day 5 through JevStation; recorded in [jev-notes.md](jev-notes.md).*
 - [ ] **P** Idempotency key on `POST /sr`, Testcontainers integration tests, Dockerfile.
 - [~] **B** **Checkpoint 1:** a `/chat` message ("restart the claims app in UAT, it's hung") creates
   a real SR in the ticketing service, and resending it returns the same SR. *Verified live against
@@ -273,9 +283,10 @@ score ≥ high).
 
 ---
 
-## Days 5–10 — not yet planned in detail
+## Days 5–10
 
-Headline items only, so the board is complete. Each gets its own planning pass when its turn comes.
+Days 5–8 were each planned in their own doc (linked per day). Days 9–10 are headline items until
+their planning pass.
 
 ### Day 5 — Jev, and the latency decision
 *Done when: routing accuracy reported for both engines; a written recommendation on embedding
