@@ -14,7 +14,7 @@ Day 9's demo scenarios with the real ticketing service still have to be run.
 | Routing accuracy | **96%** (strict 94%) | ≥ 90% | ✅ |
 | Category accuracy on SR-bound queries | **100%** | ≥ 90% | ✅ |
 | Action requests wrongly answered with an article | **0%** | ≤ 5% | ✅ |
-| Answers supported by the cited article | *awaiting judgement*: [answer-support-v1.md](answer-support-v1.md) | 18 of 20 | ⏳ |
+| Answers supported by the cited article | **18 of 20** strictly (19 at article level); second judge pending: [answer-support-v1.md](answer-support-v1.md) | 18 of 20 | ✅ |
 | p95 latency, answer path | **7.9 s** (p50 5.8 s) | < 3 s | ❌ |
 | Decision layer latency | ~0 ms (rules); extraction p50 2.1 s on the SR path | < 500 ms | ✅ |
 | Status changes notified within 1 minute | **10 of 10** (median 3.1 s, max 8.3 s) | 10 of 10 | ✅ |
@@ -133,9 +133,19 @@ target by design.
 ## Answer support (hand-judged)
 
 20 informational questions (the first two by id in each category) were answered through the live
-`/chat`. Every answer cites its expected source article. Whether each claim is supported by the
-cited chunks is being judged by hand in [answer-support-v1.md](answer-support-v1.md); this row of
-the summary is filled in from that sheet.
+`/chat`. Every answer cites its expected source article. Each claim was checked against the
+cited chunks in [answer-support-v1.md](answer-support-v1.md).
+
+| Judge | Fully supported | Notes |
+| --- | --- | --- |
+| Claude | **18 / 20** | ❌ inf-06, ⚠️ inf-18; 19 / 20 at article level |
+| Tanmay | *pending* | |
+
+- **inf-06 (❌):** the CAB facts are right, but the model derived a best/worst-case schedule the
+  article doesn't give, and the worst case is wrong. A prompt rule against computing schedules or
+  dates the sources don't state would target it.
+- **inf-18 (⚠️):** "two business days" is correct and in the cited article, but the citation points
+  at the wrong chunk of it.
 
 ## Latency: the answer path end to end
 
