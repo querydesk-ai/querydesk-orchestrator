@@ -1,16 +1,21 @@
 import logging
 from contextlib import asynccontextmanager
 from importlib.metadata import version
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 
-from querydesk.api.routes import chat, health, webhooks
+from querydesk.api.routes import chat, health, notifications, webhooks
 from querydesk.core.errors import VectorStoreError
 from querydesk.services.retrieval.qdrant_store import ensure_collections
 from querydesk.services.state import postgres_store, redis_store
 from querydesk.services.ticketing import client as ticketing
 
 logger = logging.getLogger(__name__)
+
+# The minimal chat page (Day 8): one static file, served same-origin.
+INDEX_HTML = Path(__file__).parent / "static" / "index.html"
 
 # uvicorn configures only its own loggers; without this the app's INFO lines —
 # including one structured decision per message (querydesk.decision) — vanish.
@@ -51,3 +56,9 @@ app = FastAPI(
 app.include_router(health.router)
 app.include_router(chat.router)
 app.include_router(webhooks.router)
+app.include_router(notifications.router)
+
+
+@app.get("/", include_in_schema=False)
+async def index() -> FileResponse:
+    return FileResponse(INDEX_HTML, media_type="text/html")

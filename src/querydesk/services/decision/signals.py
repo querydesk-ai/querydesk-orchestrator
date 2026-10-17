@@ -99,6 +99,16 @@ def is_status(text: str) -> bool:
     return bool(_STATUS.search(t))
 
 
+# "SR-1042", "sr 1042", "SR1042": the number of one SR the message names.
+_SR_NUMBER = re.compile(r"\bsr[-\s]?(\d+)\b", re.IGNORECASE)
+
+
+def sr_number(text: str) -> str | None:
+    """The first SR number in the message, if it names one."""
+    m = _SR_NUMBER.search(text)
+    return m.group(1) if m else None
+
+
 def classify(text: str) -> Intent:
     return Intent(
         is_action=has_request(text) or not is_question(text),

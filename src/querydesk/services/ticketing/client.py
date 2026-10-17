@@ -4,7 +4,7 @@ Boot service, PRD contract v1.1). Nothing else may call it directly.
 
 Built to the PRD's contract until the OpenAPI file lands in querydesk-docs:
   POST /sr       Idempotency-Key header; 201 = created, 200 = replay of the original
-  GET  /sr/{id}
+  GET  /sr/{id}       404 = no such SR (None, not an error)
   GET  /sr?user_id=…   a user's SRs (the duplicate check, PRD F5)
   GET  /sr?updated_since=…   SRs changed since a time (the Day 7 reconciliation poll)
 Statuses follow the PRD state machine; RESOLVED, REJECTED and REVERTED are final.
@@ -197,13 +197,16 @@ async def create_sr(sr: SRCreate, key: str) -> SRRecord:
     )
 
 
-async def get_sr(sr_id: str) -> SRRecord:
+async def get_sr(sr_id: str) -> SRRecord | None:
+    """The SR, or None if the ticketing service has no SR with this id."""
     client = _get_client()
     try:
         resp = await client.get(f"/sr/{sr_id}")
     except httpx.HTTPError as e:
         raise TicketingError(f"Ticketing service unreachable: {e}") from e
 
+    if resp.status_code == 404:
+        return None
     if resp.status_code != 200:
         raise TicketingError(f"Ticketing lookup failed: {resp.status_code} {resp.text[:200]}")
     return _record(resp)

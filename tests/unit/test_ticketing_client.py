@@ -191,9 +191,13 @@ async def test_get_sr():
     respx.get(f"{BASE}/sr/1001").mock(return_value=httpx.Response(200, json=SR_BODY))
     assert (await tk.get_sr("1001")).status == "PENDING"
 
+    # No such SR is an answer, not a failure.
     respx.get(f"{BASE}/sr/9").mock(return_value=httpx.Response(404, json={}))
+    assert await tk.get_sr("9") is None
+
+    respx.get(f"{BASE}/sr/10").mock(return_value=httpx.Response(500, json={}))
     with pytest.raises(tk.TicketingError):
-        await tk.get_sr("9")
+        await tk.get_sr("10")
 
 
 @pytest.mark.anyio

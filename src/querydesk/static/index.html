@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QueryDesk</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1c2430; --muted: #5f6b7a;
+    --line: #dde2e8; --user: #1f5fbf; --user-text: #ffffff; --bot: #eef1f5;
+    --note: #fff6dc; --note-line: #e9cf7a; --error: #fde8e8; --error-line: #e3a3a3;
+    --badge: #e3e8ef; --focus: #1f5fbf;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12161c; --panel: #1a2029; --text: #e4e9f0; --muted: #9aa6b5;
+      --line: #2c3542; --user: #3b7be0; --user-text: #ffffff; --bot: #232b36;
+      --note: #3a3220; --note-line: #7a6630; --error: #3d2224; --error-line: #7d3c40;
+      --badge: #2c3542; --focus: #6aa0ff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .app { max-width: 760px; margin: 0 auto; height: 100dvh; display: flex; flex-direction: column; }
+  header {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel);
+  }
+  header h1 { font-size: 17px; margin: 0; margin-right: auto; }
+  header label { color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 6px; }
+  input, button { font: inherit; color: inherit; }
+  input {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px;
+  }
+  input:focus-visible, button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+  #user { width: 150px; }
+  #log { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 85%; padding: 9px 12px; border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .user { align-self: flex-end; background: var(--user); color: var(--user-text); border-bottom-right-radius: 4px; }
+  .bot { align-self: flex-start; background: var(--bot); border-bottom-left-radius: 4px; }
+  .note { align-self: center; background: var(--note); border: 1px solid var(--note-line); font-size: 14px; }
+  .error { align-self: center; background: var(--error); border: 1px solid var(--error-line); font-size: 14px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; white-space: normal; }
+  .badge { font-size: 12px; background: var(--badge); border-radius: 999px; padding: 1px 8px; color: var(--muted); }
+  .sources { margin-top: 6px; font-size: 13px; color: var(--muted); white-space: normal; }
+  .sources a { color: inherit; }
+  .empty { margin: auto; color: var(--muted); text-align: center; max-width: 420px; }
+  form { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); background: var(--panel); }
+  #q { flex: 1; min-width: 0; }
+  button {
+    border: 0; border-radius: 8px; padding: 8px 16px; background: var(--user); color: var(--user-text); cursor: pointer;
+  }
+  button:disabled { opacity: .6; cursor: default; }
+  @media (max-width: 480px) { .msg { max-width: 95%; } #user { width: 120px; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>QueryDesk</h1>
+    <label for="user">User id <input id="user" autocomplete="off" placeholder="e.g. jsmith"></label>
+  </header>
+  <main id="log" aria-live="polite">
+    <p class="empty" id="empty">Ask a question about IT policy, request something
+      ("keep UAT-2 up till 11 PM for release testing"), or ask "status of my requests".</p>
+  </main>
+  <form id="form">
+    <input id="q" autocomplete="off" placeholder="Type a message" aria-label="Message" required>
+    <button id="send" type="submit">Send</button>
+  </form>
+</div>
+<script>
+(() => {
+  const POLL_MS = 10000;
+  const log = document.getElementById("log");
+  const userInput = document.getElementById("user");
+  const form = document.getElementById("form");
+  const q = document.getElementById("q");
+  const send = document.getElementById("send");
+  const shown = new Set();   // notification ids already on screen
+  let polling = false;
+
+  const store = {
+    get() { try { return localStorage.getItem("querydesk.user") || ""; } catch { return ""; } },
+    set(v) { try { localStorage.setItem("querydesk.user", v); } catch {} },
+  };
+  userInput.value = store.get();
+  userInput.addEventListener("change", () => {
+    store.set(userInput.value.trim());
+    shown.clear();
+    poll();
+  });
+
+  function bubble(kind, text) {
+    document.getElementById("empty")?.remove();
+    const el = document.createElement("div");
+    el.className = "msg " + kind;
+    el.textContent = text;
+    log.appendChild(el);
+    log.scrollTop = log.scrollHeight;
+    return el;
+  }
+
+  function badge(parent, text) {
+    const b = document.createElement("span");
+    b.className = "badge";
+    b.textContent = text;
+    parent.appendChild(b);
+  }
+
+  function safeUrl(url) {
+    try { const u = new URL(url); return /^https?:$/.test(u.protocol) ? u.href : null; }
+    catch { return null; }
+  }
+
+  function renderReply(data) {
+    const el = bubble("bot", data.reply);
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    if (data.decision) badge(meta, data.decision.replaceAll("_", " ").toLowerCase());
+    if (data.sr_id) badge(meta, "SR " + data.sr_id);
+    if (data.requires_approval) badge(meta, "needs approval");
+    if (meta.childElementCount) el.appendChild(meta);
+    if (data.sources?.length) {
+      const src = document.createElement("div");
+      src.className = "sources";
+      src.append("Sources: ");
+      data.sources.forEach((s, i) => {
+        if (i) src.append(" · ");
+        const href = s.source_url && safeUrl(s.source_url);
+        if (href) {
+          const a = document.createElement("a");
+          a.href = href; a.target = "_blank"; a.rel = "noopener noreferrer";
+          a.textContent = `[${i + 1}] ${s.title}`;
+          src.appendChild(a);
+        } else {
+          src.append(`[${i + 1}] ${s.title}`);
+        }
+      });
+      el.appendChild(src);
+    }
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const user = userInput.value.trim();
+    const text = q.value.trim();
+    if (!user) { userInput.focus(); bubble("error", "Enter a user id first."); return; }
+    if (!text) return;
+    store.set(user);
+    bubble("user", text);
+    q.value = "";
+    send.disabled = true;
+    try {
+      const resp = await fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: user, query: text }),
+      });
+      if (!resp.ok) throw new Error(String(resp.status));
+      renderReply(await resp.json());
+    } catch {
+      bubble("error", "The service is having trouble, try again.");
+    } finally {
+      send.disabled = false;
+      q.focus();
+      poll();
+    }
+  });
+
+  async function poll() {
+    const user = userInput.value.trim();
+    if (!user || polling) return;
+    polling = true;
+    try {
+      const url = "/notifications?unread_only=true&limit=20&user_id=" + encodeURIComponent(user);
+      const resp = await fetch(url);
+      if (!resp.ok) return;
+      const items = (await resp.json()).filter((n) => !shown.has(n.id)).reverse();
+      for (const n of items) {
+        shown.add(n.id);
+        bubble("note", n.message);
+      }
+      if (items.length) {
+        await fetch("/notifications/read", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: user, ids: items.map((n) => n.id) }),
+        });
+      }
+    } catch {
+      // Notifications are best effort; the next poll tries again.
+    } finally {
+      polling = false;
+    }
+  }
+
+  poll();
+  setInterval(poll, POLL_MS);
+})();
+</script>
+</body>
+</html>

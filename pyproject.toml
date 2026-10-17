@@ -39,6 +39,10 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# The Day 8 chat page ships inside the package.
+[tool.setuptools.package-data]
+querydesk = ["static/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # src/ layout: importable without `pip install -e .` (CI, fresh checkouts).

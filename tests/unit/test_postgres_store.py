@@ -66,6 +66,18 @@ class FakePool:
     def acquire(self):
         return FakeConn(self)
 
+    async def fetch(self, sql, *args):
+        if self.error:
+            raise self.error
+        self.calls.append((sql, args))
+        return [{"id": 1, "sr_id": "1001", "status": "APPROVED", "message": "m"}]
+
+    async def execute(self, sql, *args):
+        if self.error:
+            raise self.error
+        self.calls.append((sql, args))
+        return f"UPDATE {len(args[1])}"
+
     async def fetchval(self, sql, *args):
         if self.error:
             raise self.error
@@ -231,3 +243,42 @@ async def test_a_failed_notification_write_is_a_postgres_store_error(pool):
     with pytest.raises(PostgresStoreError, match="notification"):
         await _status_change()
     assert pool.transactions == ["rollback"]
+
+
+# --- Reading notifications (Day 8) -----------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_list_notifications_is_scoped_to_the_user(pool):
+    rows = await postgres_store.list_notifications("u1", unread_only=True, limit=20)
+
+    assert rows == [{"id": 1, "sr_id": "1001", "status": "APPROVED", "message": "m"}]
+    [(sql, args)] = pool.calls
+    assert "FROM notifications" in sql and "WHERE user_id = $1" in sql
+    assert "ORDER BY created_at DESC" in sql
+    assert args == ("u1", True, 20)
+
+
+@pytest.mark.anyio
+async def test_mark_read_is_scoped_to_the_user_and_counts_rows(pool):
+    assert await postgres_store.mark_read("u1", [3, 4]) == 2
+
+    [(sql, args)] = pool.calls
+    assert "UPDATE notifications SET read_at" in sql
+    assert "user_id = $1" in sql and "read_at IS NULL" in sql
+    assert args == ("u1", [3, 4])
+
+
+@pytest.mark.anyio
+async def test_mark_read_with_no_ids_touches_nothing(pool):
+    assert await postgres_store.mark_read("u1", []) == 0
+    assert pool.calls == []
+
+
+@pytest.mark.anyio
+async def test_notification_read_failures_are_postgres_store_errors(pool):
+    pool.error = OSError("down")
+    with pytest.raises(PostgresStoreError):
+        await postgres_store.list_notifications("u1", unread_only=False, limit=5)
+    with pytest.raises(PostgresStoreError):
+        await postgres_store.mark_read("u1", [1])

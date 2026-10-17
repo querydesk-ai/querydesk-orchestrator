@@ -131,6 +131,15 @@ async def test_a_failed_category_lookup_still_notifies(store):
 
 
 @pytest.mark.anyio
+@respx.mock
+async def test_an_sr_the_service_does_not_know_still_notifies(store):
+    respx.get(f"{BASE}/sr/1001").mock(return_value=httpx.Response(404, json={}))
+
+    assert await notify.handle_status_change(sr_id="1001", user_id="u1", to_status="APPROVED")
+    assert store.calls[0]["message"].startswith("Your request SR 1001 was approved.")
+
+
+@pytest.mark.anyio
 async def test_a_failed_write_raises_so_the_task_retries(monkeypatch):
     async def down(**kwargs):
         raise PostgresStoreError("down")

@@ -67,10 +67,13 @@ async def _category_name(sr_id: str, category_id: str | None) -> str | None:
     """
     if category_id is None:
         try:
-            category_id = (await ticketing.get_sr(sr_id)).category_id
+            sr = await ticketing.get_sr(sr_id)
         except TicketingError as e:
             logger.warning("No category for SR %s, notifying without it: %s", sr_id, e)
             return None
+        if sr is None:
+            return None
+        category_id = sr.category_id
     try:
         return catalog.get(category_id).name
     except catalog.UnknownCategoryError:

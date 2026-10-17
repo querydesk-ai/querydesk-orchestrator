@@ -27,7 +27,7 @@ import anyio
 from querydesk.core.config import settings
 from querydesk.core.errors import PostgresStoreError
 from querydesk.models.schemas import Decision, ResolutionType, Source
-from querydesk.services import catalog, conversation, rag
+from querydesk.services import catalog, conversation, rag, status
 from querydesk.services.conversation import Conversation
 from querydesk.services.decision import extraction
 from querydesk.services.decision.engine import (
@@ -54,10 +54,6 @@ ESCALATE_REPLY = (
 ESCALATE_FALLBACK_REPLY = (
     "I can't handle this one automatically. Please contact the service desk team "
     "directly so a person can pick it up."
-)
-STATUS_REPLY = (
-    "I can't look up the status of existing requests yet — that's coming soon. "
-    "You'll be notified automatically whenever one of your requests changes status."
 )
 CANCELLED_REPLY = "OK, I've cancelled that request. Nothing was raised."
 NOTHING_TO_CANCEL_REPLY = "There's no open request to cancel."
@@ -245,9 +241,9 @@ def _cap_replies(missing: list[str]) -> tuple[str, str]:
 
 
 async def _act(
-    user_id: str, query: str, retrieval: rag.Retrieval, out: DecisionOutput
+    user_id: str, query: str, retrieval: rag.Retrieval | None, out: DecisionOutput
 ) -> ChatResult:
-    confidence = retrieval.top_dense_score
+    confidence = retrieval.top_dense_score if retrieval is not None else None
 
     if out.decision in (Decision.ANSWER, Decision.ANSWER_WITH_DISCLAIMER):
         answer = await rag.generate(query, retrieval)
@@ -282,7 +278,9 @@ async def _act(
 
     if out.decision is Decision.STATUS_LOOKUP:
         return ChatResult(
-            reply=STATUS_REPLY, resolution_type=out.resolution_type, **_base(out, confidence)
+            reply=await status.answer(user_id, query),
+            resolution_type=out.resolution_type,
+            **_base(out, confidence),
         )
 
     return await _escalate(user_id, query, out, confidence)
@@ -472,10 +470,13 @@ async def _continue(
 
 @dataclass
 class _Fresh:
-    """A fresh message, decided but not yet acted on."""
+    """
+    A fresh message, decided but not yet acted on. A status question searched
+    nothing, so it has no retrieval or router.
+    """
 
-    retrieval: rag.Retrieval
-    router: RouterResult
+    retrieval: rag.Retrieval | None
+    router: RouterResult | None
     intent: Intent
     out: DecisionOutput
     start: float
@@ -484,6 +485,23 @@ class _Fresh:
 
 async def _decide_fresh(query: str, engine: DecisionEngine) -> _Fresh:
     start = time.perf_counter()
+    intent = classify(query)
+
+    if intent.is_status:
+        # Rule 1 needs nothing but the intent, so a status question skips the
+        # embedding (~2 s, a Fireworks call) and the search entirely.
+        out = await engine.decide(
+            DecisionInput(
+                query=query,
+                top_dense_score=0.0,
+                has_hits=False,
+                router=RouterResult(),
+                intent=intent,
+            )
+        )
+        decided = round((time.perf_counter() - start) * 1000, 1)
+        timings = {"embed": 0.0, "search": 0.0, "decide": decided, "extraction": None}
+        return _Fresh(None, None, intent, out, start, timings)
 
     vectors = await embed_query_vectors(query)
     embedded = time.perf_counter()
@@ -508,7 +526,6 @@ async def _decide_fresh(query: str, engine: DecisionEngine) -> _Fresh:
     router: RouterResult = found["router"]
     searched = time.perf_counter()
 
-    intent = classify(query)
     out = await engine.decide(
         DecisionInput(
             query=query,

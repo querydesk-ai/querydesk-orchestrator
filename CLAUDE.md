@@ -11,7 +11,7 @@ requests into correctly categorised Service Requests (SRs) it tracks to closure.
 The authoritative spec is `../SR Resolution Bot — Final PRD & 10-Day Roadmap.md`. **Read it before
 making design decisions** — it supersedes the older "Phase 0 / Phase 1" framing that earlier versions
 of this repo used. The current task breakdown lives in [docs/task.md](docs/task.md); the next day's
-design is in [docs/plan-day-7.md](docs/plan-day-7.md).
+design is in [docs/plan-day-8.md](docs/plan-day-8.md).
 
 QueryDesk is two services behind one contract:
 
@@ -52,7 +52,7 @@ uv run --with psutil scripts/latency_spike.py   # local embedding models vs qwen
 uv run uvicorn tests.fakes.fake_ticketing:app --port 8081
 TICKETING_BASE_URL=http://127.0.0.1:8081 uv run uvicorn querydesk.main:app --reload
 
-uv run uvicorn querydesk.main:app --reload
+uv run uvicorn querydesk.main:app --reload   # chat page at http://127.0.0.1:8000/
 
 # Status notifications (Day 7). WEBHOOK_SECRET must match on both sides. Windows needs --pool=solo.
 STAND_IN_WEBHOOK_URL=http://127.0.0.1:8000/webhooks/sr-status uv run uvicorn tests.fakes.fake_ticketing:app --port 8081
@@ -93,7 +93,10 @@ Everything after SR creation is async (webhook → Redis → Celery).
   `conversation.load(user_id)`; an open conversation goes to `_continue()` (cancel →
   `extract_follow_up()` on **the reply only** → merge, where a stated value may correct a collected
   one (`corrected:` override) → `engine.complete_sr()` → `_advance()`: raise / ask again / escalate
-  after `conversation_max_follow_ups`). A reply that states no field is decided as a fresh message
+  after `conversation_max_follow_ups`). A status question (`signals.classify().is_status`) is decided
+  **before** any embedding or search — rule 1 needs only the intent — and answered by
+  `services/status.py` (open SRs, or one SR by number; someone else's SR reads exactly like a
+  missing one). A reply that states no field is decided as a fresh message
   (`_decide_fresh()`, no side effects): a rule-5 `ESCALATE` means it made no sense on its own, so
   it counts as an unhelpful follow-up (`unanswered:` override); anything else clears the
   conversation and is acted on normally. The fresh flow: embed once → `rag.retrieve()` +
@@ -133,6 +136,11 @@ Everything after SR creation is async (webhook → Redis → Celery).
   (`api/routes/webhooks.py`) only verifies, validates and enqueues — 202, or 503 if the broker
   can't take it so the sender retries. Celery tasks run coroutines on one loop per worker process
   (`worker._run`), never `asyncio.run()`: the asyncpg pool and clients are loop-bound.
+- `GET /notifications` / `POST /notifications/read` (`api/routes/notifications.py`) read the
+  table the notify task writes; marking read is scoped by `user_id`. There is no login in v1:
+  `user_id` is a parameter everywhere, as on `/chat`. `GET /` serves the one-file chat page
+  (`src/querydesk/static/index.html`, vanilla JS, no CDN), which polls unread notifications every
+  10 s and marks them read once shown.
 - Use the **async** Qdrant client (`AsyncQdrantClient`). The `/chat` path is async and the sync client
   would block the event loop. `fastembed` is sync and CPU-bound, so call it through
   `anyio.to_thread.run_sync` from async code.

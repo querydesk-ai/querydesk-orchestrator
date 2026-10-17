@@ -86,3 +86,9 @@
 {"id": "inf-33", "query": "I'd like to understand what time UAT shuts down every night", "kind": "informational", "expected_decision": "ANSWER", "category_id": "it_uat_extension", "expected_source": "it-uat-extension.md"}
 {"id": "inf-34", "query": "could you explain whether a rolling restart causes downtime", "kind": "informational", "expected_decision": "ANSWER", "category_id": "it_application_restart", "expected_source": "it-application-restart.md"}
 {"id": "oos-18", "query": "stop the claims app in UAT", "kind": "out_of_scope", "expected_decision": "ESCALATE"}
+{"id": "sts-01", "query": "what's the status of my requests?", "kind": "status", "expected_decision": "STATUS_LOOKUP"}
+{"id": "sts-02", "query": "any update on SR-1042?", "kind": "status", "expected_decision": "STATUS_LOOKUP"}
+{"id": "sts-03", "query": "what happened to my ticket for the UAT extension", "kind": "status", "expected_decision": "STATUS_LOOKUP"}
+{"id": "sts-04", "query": "show me my open requests", "kind": "status", "expected_decision": "STATUS_LOOKUP"}
+{"id": "sts-05", "query": "where is my request for the firewall change", "kind": "status", "expected_decision": "STATUS_LOOKUP"}
+{"id": "sts-06", "query": "SR 2231 status please", "kind": "status", "expected_decision": "STATUS_LOOKUP"}
