@@ -1,3 +1,4 @@
+from datetime import datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
@@ -76,3 +77,23 @@ class SRStatusEvent(BaseModel):
     to_status: str
     note: str | None = None
     changed_at: str | None = None
+
+
+class Notification(BaseModel):
+    """One status-change message for a user (the notifications table)."""
+
+    id: int
+    sr_id: str
+    status: str
+    message: str
+    created_at: datetime
+    read_at: datetime | None = None
+
+
+class MarkReadRequest(BaseModel):
+    user_id: str
+    ids: list[int] = Field(max_length=200)
+
+
+class MarkReadResponse(BaseModel):
+    marked: int

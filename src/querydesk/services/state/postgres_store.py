@@ -34,6 +34,21 @@ ON CONFLICT (sr_id, status) DO NOTHING
 RETURNING id
 """
 
+# A user's notifications, newest first; $2 = true keeps only the unread ones.
+_LIST_NOTIFICATIONS = """
+SELECT id, sr_id, status, message, created_at, read_at
+FROM notifications
+WHERE user_id = $1 AND (NOT $2 OR read_at IS NULL)
+ORDER BY created_at DESC, id DESC
+LIMIT $3
+"""
+
+# Scoped by user_id: nobody can mark someone else's notifications read.
+_MARK_READ = """
+UPDATE notifications SET read_at = now()
+WHERE user_id = $1 AND id = ANY($2::bigint[]) AND read_at IS NULL
+"""
+
 # Moves the recorded SR forward only: $3 lists the statuses ranked below the
 # new one, so an out-of-order webhook never sets an SR back.
 _ADVANCE_SR = """
@@ -149,3 +164,26 @@ async def record_status_change(
             return True
     except _ERRORS as e:
         raise PostgresStoreError(f"Postgres notification write failed: {e}") from e
+
+
+async def list_notifications(user_id: str, *, unread_only: bool, limit: int) -> list[dict]:
+    """A user's notifications, newest first (Day 8, GET /notifications)."""
+    pool = await _get_pool()
+    try:
+        rows = await pool.fetch(_LIST_NOTIFICATIONS, user_id, unread_only, limit)
+    except _ERRORS as e:
+        raise PostgresStoreError(f"Postgres notifications read failed: {e}") from e
+    return [dict(r) for r in rows]
+
+
+async def mark_read(user_id: str, ids: list[int]) -> int:
+    """Mark the user's notifications `ids` read. Returns how many changed."""
+    if not ids:
+        return 0
+    pool = await _get_pool()
+    try:
+        result = await pool.execute(_MARK_READ, user_id, ids)
+    except _ERRORS as e:
+        raise PostgresStoreError(f"Postgres notifications update failed: {e}") from e
+    # asyncpg returns the command tag, e.g. "UPDATE 2".
+    return int(result.split()[-1])

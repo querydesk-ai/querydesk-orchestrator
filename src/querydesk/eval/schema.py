@@ -26,6 +26,8 @@ class Kind(StrEnum):
     ACTION = "action"
     INFORMATIONAL = "informational"
     OUT_OF_SCOPE = "out_of_scope"
+    # A question about the user's own SRs (rule 1). No category: nothing is routed.
+    STATUS = "status"
 
 
 class EvalRow(BaseModel):
@@ -48,6 +50,11 @@ class EvalRow(BaseModel):
                 raise ValueError(f"{self.id}: out-of-scope rows have no category")
             if self.expected_decision is not Decision.ESCALATE:
                 raise ValueError(f"{self.id}: out-of-scope rows must expect ESCALATE")
+        elif self.kind is Kind.STATUS:
+            if self.category_id is not None:
+                raise ValueError(f"{self.id}: status rows have no category")
+            if self.expected_decision is not Decision.STATUS_LOOKUP:
+                raise ValueError(f"{self.id}: status rows must expect STATUS_LOOKUP")
         else:
             if self.category_id is None:
                 raise ValueError(f"{self.id}: {self.kind} rows need a category_id")

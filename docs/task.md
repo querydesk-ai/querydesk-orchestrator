@@ -7,7 +7,7 @@ Owner key: **T** = Tanmay (orchestrator) · **P** = Partner (ticketing + deploy)
 
 Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
 
-## Where we are — 2026-10-16
+## Where we are — 2026-10-17
 
 - **Orchestrator lane: Days 1–6 done.** Eval v2 (87 rows): **routing accuracy 97%** (target
   ≥ 90%), **action requests answered with an article 0%** (target ≤ 5%), SR-bound category
@@ -35,8 +35,11 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
   **Checkpoint 2 met against the stand-in:** approve in its Swagger → notification row in Neon in
   ~6 s; replayed webhook writes nothing; a webhook lost while the orchestrator was down is caught by
   `reconcile`. Migration 002 applied 2026-10-16.
-- **Next up:** contract v1.1 (now including the webhook signature format), the bge-base trial
-  (before Day 8), then Day 8 (status questions, `GET /notifications`, chat page).
+- **Day 8 (status questions, notifications API, chat page) done** on
+  `feat/day8-status-chat-page` ([plan-day-8.md](plan-day-8.md)). Verified live in Chrome; eval
+  (94 rows) 96% routing, 0% action answered, 6/6 status rows.
+- **Next up:** the bge-base trial (re-calibrates, so it also settles the threshold proposals in
+  `eval-report-latest.md`), contract v1.1, then the Day 9 demo scenarios.
 - **PR hygiene:** turn on "Automatically delete head branches" in the repo settings. Two stacked
   PRs (#6, #8) merged into their base branch instead of `main`.
 
@@ -346,7 +349,14 @@ Detail in [plan-day-7.md](plan-day-7.md).
 
 ### Day 8 — chat page
 *Done when: the full stack starts with one command.*
-- [ ] **T** Status questions, notifications endpoint, minimal chat page.
+Detail in [plan-day-8.md](plan-day-8.md).
+- [x] **T** Status questions (`services/status.py`): open SRs, or one SR by number; someone else's
+  SR reads like a missing one; status turns skip embedding and search.
+- [x] **T** `GET /notifications`, `POST /notifications/read` (scoped by `user_id`).
+- [x] **T** Minimal chat page at `/` (one static file, polls notifications every 10 s).
+- [x] **T** Eval: `status` kind + 6 rows; 96% routing, thresholds unchanged.
+- [x] **T** Chat page at phone width (390 px iframe): no horizontal scroll. Light theme not yet
+  seen.
 - [ ] **P** Docker Compose for the full stack, Nginx, structured logs with a correlation id.
 
 ### Day 9 — demo scenarios · **Checkpoint 3**

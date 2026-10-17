@@ -31,6 +31,11 @@ def test_meets_the_prd_split_minimums(rows):
     assert kinds[Kind.OUT_OF_SCOPE] >= 10
 
 
+def test_status_questions_are_covered(rows):
+    """Rule 1 beats every other rule, so it needs rows of its own (Day 8)."""
+    assert sum(r.kind is Kind.STATUS for r in rows) >= 5
+
+
 def test_ids_are_unique(rows):
     assert len({r.id for r in rows}) == len(rows)
 
@@ -70,6 +75,8 @@ def test_expected_sources_exist_in_the_kb(rows):
     "bad",
     [
         {"kind": "out_of_scope", "expected_decision": "ESCALATE", "category_id": "x"},
+        {"kind": "status", "expected_decision": "ANSWER"},
+        {"kind": "status", "expected_decision": "STATUS_LOOKUP", "category_id": "x"},
         {"kind": "action", "expected_decision": "RAISE_SR", "category_id": "x"},
         {
             "kind": "action",

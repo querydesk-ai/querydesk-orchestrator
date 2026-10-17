@@ -6,7 +6,7 @@ the patterns aren't only ever tested against rows written alongside them.
 import pytest
 
 from querydesk.eval.schema import Kind, load_eval_set
-from querydesk.services.decision.signals import classify, has_request, is_question
+from querydesk.services.decision.signals import classify, has_request, is_question, sr_number
 
 ACTIONS = [
     # Imperatives
@@ -136,3 +136,18 @@ def test_signals_agree_with_every_eval_label():
             assert intent.is_action, row.id
         if row.kind is Kind.INFORMATIONAL:
             assert not intent.is_action, row.id
+
+
+@pytest.mark.parametrize(
+    "text, number",
+    [
+        ("any update on SR-1042?", "1042"),
+        ("status of sr 7", "7"),
+        ("what happened to SR1042", "1042"),
+        ("status of my requests", None),
+        ("my usr123 account", None),  # not an SR reference
+        ("check SR-12 and SR-13", "12"),  # the first one
+    ],
+)
+def test_sr_number(text, number):
+    assert sr_number(text) == number

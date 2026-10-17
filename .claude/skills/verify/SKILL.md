@@ -55,6 +55,10 @@ Follow-ups are extracted from the user's reply only and every value must appear 
 text; read the Redis state after each turn to see exactly what was collected — the reply text
 alone doesn't show it.
 
+- Chat page: open `http://127.0.0.1:8097/` (claude-in-chrome), set a fresh user id, chat; a
+  status change on the stand-in shows up as a yellow bubble within ~10 s and is marked read.
+- Status: "status of my requests" lists open SRs; the decision line shows `embed: 0.0` and
+  `top_dense_score: null` (no search). "status of SR <someone else's id>" → "can't find".
 - Notifications: raise an approval SR, `PATCH /sr/{id}/status` to APPROVED on the stand-in, then
   read `notifications` and `sr_requests.last_notified_status` for the user (Neon). The worker logs
   one `sr_id=… status=… source=webhook|reconcile written=True|False` line per change.
@@ -69,6 +73,8 @@ alone doesn't show it.
 - Kill servers on Windows: `Get-NetTCPConnection -LocalPort <p> -State Listen | % { Stop-Process -Id $_.OwningProcess -Force }`.
 - The served stand-in numbers SRs from the clock (e.g. 24930355), not 1001: notifications are
   unique per `(sr_id, status)`, so a reused id's status changes would be dropped as duplicates.
+- Resizing a maximised Chrome window does nothing. For phone width, replace the page body with
+  a 390 px `<iframe src="/">` via javascript_tool and drive the form through `contentDocument`.
 - Upstash `INFO stats` counters flip between shards; don't use them to measure Celery's idle cost.
 - Killing the worker by port doesn't work; stop the `celery` python processes by command line.
 - Live runs leave rows in Neon `sr_requests` and `notifications`; use recognisable user ids so they can be deleted.

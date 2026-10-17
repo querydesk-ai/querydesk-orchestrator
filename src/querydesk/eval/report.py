@@ -212,7 +212,7 @@ def _decisions(results: list[dict]) -> dict:
 
     by_kind = {
         kind: accuracy(rows, _lenient_match)
-        for kind in ("action", "informational", "out_of_scope")
+        for kind in ("action", "informational", "out_of_scope", "status")
         if (rows := [r for r in results if r["kind"] == kind])
     }
     return {

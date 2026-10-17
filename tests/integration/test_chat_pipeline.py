@@ -58,6 +58,9 @@ class World:
     extraction_reply: str | list = '{"application": "claims", "environment": "UAT"}'
     answer_calls: list = field(default_factory=list)
     extraction_calls: list = field(default_factory=list)
+    # Queries embedded / searched: a status question must add none.
+    embed_calls: list = field(default_factory=list)
+    search_calls: int = 0
     # Rows written to sr_requests.
     rows: list = field(default_factory=list)
 
@@ -77,9 +80,11 @@ def world(monkeypatch):
         monkeypatch.setattr(settings, name, value)
 
     async def fake_embed(query):
+        w.embed_calls.append(query)
         return QueryVectors(dense=[0.1], sparse=object())
 
     async def fake_hybrid(dense_vector, sparse_vector, top_k=None):
+        w.search_calls += 1
         return w.hits, w.dense_score
 
     async def fake_categories(dense_vector, limit=2):
@@ -317,12 +322,30 @@ async def test_out_of_scope_escalates_with_no_llm_call_at_all(world):
 
 
 @pytest.mark.anyio
-async def test_status_question_is_routed_to_status_lookup(world):
-    body = (await _chat("what's the status of my request?")).json()
+async def test_status_question_lists_open_srs_without_a_search(world):
+    raised = (await _chat("restart the claims app in UAT, it's hung")).json()
+    world.embed_calls.clear()
+    world.extraction_calls.clear()
+    world.search_calls = 0
+
+    body = (await _chat("what's the status of my requests?")).json()
 
     assert body["decision"] == "STATUS_LOOKUP"
-    assert body["reply"] == pipeline.STATUS_REPLY
+    assert f"SR {raised['sr_id']}" in body["reply"] and "Pending" in body["reply"]
+    assert body["retrieval_confidence"] is None
+    # Rule 1 needs only the intent: no embedding, search or LLM call.
+    assert world.embed_calls == [] and world.search_calls == 0
     assert world.answer_calls == [] and world.extraction_calls == []
+
+
+@pytest.mark.anyio
+async def test_status_of_someone_elses_sr_is_not_found(world):
+    raised = (await _chat("restart the claims app in UAT, it's hung", user_id="u2")).json()
+
+    body = (await _chat(f"any update on SR-{raised['sr_id']}?")).json()
+
+    assert body["decision"] == "STATUS_LOOKUP"
+    assert body["reply"] == f"I can't find SR {raised['sr_id']} among your requests."
 
 
 # --- Decision log (PRD F10) ----------------------------------------------------

@@ -138,3 +138,16 @@ async def test_missing_required_field_is_a_422(client):
         resp = await c.post("/chat", json={"query": "no user id"})
 
     assert resp.status_code == 422
+
+
+@pytest.mark.anyio
+async def test_the_chat_page_is_served_at_the_root(client):
+    async with client as c:
+        resp = await c.get("/")
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/html")
+    page = resp.text
+    assert 'id="form"' in page and 'id="user"' in page
+    # Same-origin calls only: the page talks to /chat and /notifications.
+    assert 'fetch("/chat"' in page and "/notifications" in page
