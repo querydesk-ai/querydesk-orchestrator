@@ -5,15 +5,15 @@ It answers questions the knowledge base covers (citing the source article), turn
 into correctly categorised Service Requests (SRs), and notifies the user as each SR moves through
 its lifecycle.
 
-## Who built what
+## Ownership
 
-QueryDesk is two services, built by two people, behind one API contract:
+QueryDesk is two services, each owned by one team, behind one API contract:
 
-| Repo | What it does | Built by |
+| Repo | What it does | Owner |
 | --- | --- | --- |
-| **querydesk-orchestrator** (this repo) | Chat API, hybrid retrieval and cited answers, category router, decision layer, slot filling, ticketing client, signed-webhook receiver, Celery notifications, chat page, eval tooling | **Tanmay Kayande** |
-| [querydesk-ticketing](https://github.com/querydesk-ai/querydesk-ticketing) | Spring Boot 3 / Java 21 SR service: status state machine, idempotent creation, webhook outbox with retries, UAT auto-revert | **Partner** |
-| [querydesk-docs](https://github.com/querydesk-ai/querydesk-docs) | PRD, the OpenAPI contract (`openapi.yaml`), `categories.json`, the eval set | Both |
+| **querydesk-orchestrator** (this repo) | Chat API, hybrid retrieval and cited answers, category router, decision layer, slot filling, ticketing client, signed-webhook receiver, Celery notifications, chat page, eval tooling | Orchestrator team |
+| [querydesk-ticketing](https://github.com/querydesk-ai/querydesk-ticketing) | Spring Boot 3 / Java 21 SR service: status state machine, idempotent creation, webhook outbox with retries, UAT auto-revert | Ticketing team |
+| [querydesk-docs](https://github.com/querydesk-ai/querydesk-docs) | PRD, the OpenAPI contract (`openapi.yaml`), `categories.json`, the eval set | Both teams |
 
 The services share nothing but the contract and `categories.json`. Neither reads the other's
 database.
@@ -100,7 +100,7 @@ Re-running ingestion is safe: point ids are deterministic, so chunks update in p
 
 ## Run
 
-The SR path needs a ticketing service. Until the partner's is deployed, run the stand-in
+The SR path needs a ticketing service. Until it is deployed, run the stand-in
 (`tests/fakes/fake_ticketing.py`), which implements contract v1.1:
 
 ```bash
