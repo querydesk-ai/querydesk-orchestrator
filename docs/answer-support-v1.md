@@ -10,28 +10,28 @@ A correct refusal or escalation counts as supported only if no claim is made.
 
 | # | Row | Question | Decision | Cites | Verdict (Tanmay) | Verdict (Claude) |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | inf-01 | how long does an account lockout last? | ANSWER | [1] it-password-reset.md, [2] it-password-reset.md |  | ✅ |
-| 2 | inf-02 | what does PWD-1407 mean? | ANSWER_WITH_DISCLAIMER | [1] it-password-reset.md |  | ✅ |
-| 3 | inf-03 | what time does UAT shut down every night? | ANSWER | [2] it-uat-extension.md |  | ✅ |
-| 4 | inf-04 | is my UAT data lost when the environment shuts down? | ANSWER | [1] it-uat-extension.md |  | ✅ |
-| 5 | inf-05 | what's the max number of nodes in the doc-render cluster? | ANSWER | [1] it-add-server-cluster.md |  | ✅ |
-| 6 | inf-06 | how long does it take to add a node in production? | ANSWER | [1] it-add-server-cluster.md, [2] it-add-server-cluster.md |  | ❌ |
-| 7 | inf-07 | does a rolling restart cause downtime? | ANSWER | [1] it-application-restart.md |  | ✅ |
-| 8 | inf-08 | do I need approval to restart something in prod? | ANSWER | [1] it-application-restart.md, [2] it-application-restart.md |  | ✅ |
-| 9 | inf-09 | how long does an internal DNS change take to show up? | ANSWER | [1] it-dns-firewall-change.md |  | ✅ |
-| 10 | inf-10 | my firewall request failed with FW-2204, what does that mean? | ANSWER | [1] it-dns-firewall-change.md |  | ✅ |
-| 11 | inf-11 | how long does a private car motor policy take to issue? | ANSWER | [1] ops-policy-issuance-delay.md |  | ✅ |
-| 12 | inf-12 | whats the difference between payment received and payment realised? | ANSWER | [1] ops-policy-issuance-delay.md |  | ✅ |
-| 13 | inf-13 | when is my commission credited? | ANSWER | [1] ops-commission-payout.md |  | ✅ |
-| 14 | inf-14 | what TDS rate is deducted from commission if PAN isn't on record? | ANSWER | [1] ops-commission-payout.md |  | ✅ |
-| 15 | inf-15 | how many hours of training does an agent need to get licensed? | ANSWER | [1] ops-agent-onboarding-licensing.md |  | ✅ |
-| 16 | inf-16 | how long after onboarding does a new agent get their agent code? | ANSWER | [2] ops-agent-onboarding-licensing.md |  | ✅ |
-| 17 | inf-17 | can the life assured on a policy be changed? | ANSWER | [1] ops-policy-endorsement.md |  | ✅ |
-| 18 | inf-18 | how long does a nominee change take to process? | ANSWER | [1] ops-policy-endorsement.md, [2] ops-policy-endorsement.md |  | ⚠️ |
-| 19 | inf-19 | what does CRM-5503 mean? | ANSWER_WITH_DISCLAIMER | [1] ops-crm-lead-access.md, [5] ops-crm-lead-access.md |  | ✅ |
-| 20 | inf-20 | why do my leads disappear after a few days? | ANSWER | [1] ops-crm-lead-access.md, [2] ops-crm-lead-access.md |  | ✅ |
+| 1 | inf-01 | how long does an account lockout last? | ANSWER | [1] it-password-reset.md, [2] it-password-reset.md | ✅ | ✅ |
+| 2 | inf-02 | what does PWD-1407 mean? | ANSWER_WITH_DISCLAIMER | [1] it-password-reset.md | ✅ | ✅ |
+| 3 | inf-03 | what time does UAT shut down every night? | ANSWER | [2] it-uat-extension.md | ✅ | ✅ |
+| 4 | inf-04 | is my UAT data lost when the environment shuts down? | ANSWER | [1] it-uat-extension.md | ✅ | ✅ |
+| 5 | inf-05 | what's the max number of nodes in the doc-render cluster? | ANSWER | [1] it-add-server-cluster.md | ✅ | ✅ |
+| 6 | inf-06 | how long does it take to add a node in production? | ANSWER | [1] it-add-server-cluster.md, [2] it-add-server-cluster.md | ❌ | ❌ |
+| 7 | inf-07 | does a rolling restart cause downtime? | ANSWER | [1] it-application-restart.md | ✅ | ✅ |
+| 8 | inf-08 | do I need approval to restart something in prod? | ANSWER | [1] it-application-restart.md, [2] it-application-restart.md | ✅ | ✅ |
+| 9 | inf-09 | how long does an internal DNS change take to show up? | ANSWER | [1] it-dns-firewall-change.md | ✅ | ✅ |
+| 10 | inf-10 | my firewall request failed with FW-2204, what does that mean? | ANSWER | [1] it-dns-firewall-change.md | ✅ | ✅ |
+| 11 | inf-11 | how long does a private car motor policy take to issue? | ANSWER | [1] ops-policy-issuance-delay.md | ✅ | ✅ |
+| 12 | inf-12 | whats the difference between payment received and payment realised? | ANSWER | [1] ops-policy-issuance-delay.md | ✅ | ✅ |
+| 13 | inf-13 | when is my commission credited? | ANSWER | [1] ops-commission-payout.md | ✅ | ✅ |
+| 14 | inf-14 | what TDS rate is deducted from commission if PAN isn't on record? | ANSWER | [1] ops-commission-payout.md | ✅ | ✅ |
+| 15 | inf-15 | how many hours of training does an agent need to get licensed? | ANSWER | [1] ops-agent-onboarding-licensing.md | ✅ | ✅ |
+| 16 | inf-16 | how long after onboarding does a new agent get their agent code? | ANSWER | [2] ops-agent-onboarding-licensing.md | ✅ | ✅ |
+| 17 | inf-17 | can the life assured on a policy be changed? | ANSWER | [1] ops-policy-endorsement.md | ✅ | ✅ |
+| 18 | inf-18 | how long does a nominee change take to process? | ANSWER | [1] ops-policy-endorsement.md, [2] ops-policy-endorsement.md | ⚠️ | ⚠️ |
+| 19 | inf-19 | what does CRM-5503 mean? | ANSWER_WITH_DISCLAIMER | [1] ops-crm-lead-access.md, [5] ops-crm-lead-access.md | ✅ | ✅ |
+| 20 | inf-20 | why do my leads disappear after a few days? | ANSWER | [1] ops-crm-lead-access.md, [2] ops-crm-lead-access.md | ✅ | ✅ |
 
-Supported (Tanmay): __ / 20
+Supported (Tanmay): **18 / 20**, agreeing with Claude on every row (reviewed 2026-10-17).
 
 Supported (Claude): **18 / 20** fully supported (❌ #6, ⚠️ #18). At article level, as the
 PRD worded it ("supported by the cited article"), #18 also passes, giving 19 / 20. All 20 cite
@@ -106,7 +106,7 @@ verified.
 ```
 </details>
 
-**Verdict (Tanmay):**  
+**Verdict (Tanmay):** ✅ agrees with Claude.  
 
 **Verdict (Claude):** ✅ 30 minutes and the 3-lockouts-a-day rule are both in [1].
 
@@ -148,7 +148,7 @@ verified.
 ```
 </details>
 
-**Verdict (Tanmay):**  
+**Verdict (Tanmay):** ✅ agrees with Claude.  
 
 **Verdict (Claude):** ✅ Matches the PWD-1407 row of the error table.
 
@@ -191,7 +191,7 @@ reason matters because it determines whether the request is approved, not just l
 ```
 </details>
 
-**Verdict (Tanmay):**  
+**Verdict (Tanmay):** ✅ agrees with Claude.  
 
 **Verdict (Claude):** ✅ 9:00 PM / 7:00 AM next working day, as stated.
 
@@ -242,7 +242,7 @@ reason matters because it determines whether the request is approved, not just l
 ```
 </details>
 
-**Verdict (Tanmay):**  
+**Verdict (Tanmay):** ✅ agrees with Claude.  
 
 **Verdict (Claude):** ✅ All claims stated. Minor framing: batch jobs are listed under 'held only in memory'; the article mentions them in a separate sentence.
 
@@ -290,7 +290,7 @@ often, usually during the March renewal peak.
 ```
 </details>
 
-**Verdict (Tanmay):**  
+**Verdict (Tanmay):** ✅ agrees with Claude.  
 
 **Verdict (Claude):** ✅ doc-render: max 4 nodes.
 
@@ -372,7 +372,7 @@ often, usually during the March renewal peak.
 ```
 </details>
 
-**Verdict (Tanmay):**  
+**Verdict (Tanmay):** ❌ agrees with Claude.  
 
 **Verdict (Claude):** ❌ CAB days, the 2 PM cutoff and the emergency route are supported, but the model invented a best/worst-case schedule. The 'worst case' is wrong: missing Wednesday's 2 PM cutoff means waiting until the following Tuesday. 'Node added that day' is not stated either.
 
@@ -417,7 +417,7 @@ ticket raised alongside.
 ```
 </details>
 
-**Verdict (Tanmay):**  
+**Verdict (Tanmay):** ✅ agrees with Claude.  
 
 **Verdict (Claude):** ✅ Rolling vs full restart, 8 minutes, the cache-schema case: all stated.
 
@@ -489,7 +489,7 @@ completed run has to be reversed manually before it can be re-run.
 ```
 </details>
 
-**Verdict (Tanmay):**  
+**Verdict (Tanmay):** ✅ agrees with Claude.  
 
 **Verdict (Claude):** ✅ Approval from the service owner, the business-hours reason, the Sev-1 exception and the required details: all stated.
 
@@ -535,7 +535,7 @@ before it follows the new record.
 ```
 </details>
 
-**Verdict (Tanmay):**  
+**Verdict (Tanmay):** ✅ agrees with Claude.  
 
 **Verdict (Claude):** ✅ TTL 300 s → five minutes; JVM DNS caching.
 
@@ -572,7 +572,7 @@ different value and needs an explicit update rather than an add.
 ```
 </details>
 
-**Verdict (Tanmay):**  
+**Verdict (Tanmay):** ✅ agrees with Claude.  
 
 **Verdict (Claude):** ✅ The meaning is exact. 'Adjust and resubmit' is the model's own advice, harmless.
 
@@ -616,7 +616,7 @@ while the system considers it not yet begun.
 ```
 </details>
 
-**Verdict (Tanmay):**  
+**Verdict (Tanmay):** ✅ agrees with Claude.  
 
 **Verdict (Claude):** ✅ Same day; the clock starts when the proposal is complete.
 
@@ -663,7 +663,7 @@ sits, and chasing it without supplying the document achieves nothing.
 ```
 </details>
 
-**Verdict (Tanmay):**  
+**Verdict (Tanmay):** ✅ agrees with Claude.  
 
 **Verdict (Claude):** ✅ Received vs realised, cheque clearing, the biggest cause of delay.
 
@@ -709,7 +709,7 @@ expected amount is missing, and it is not an error.
 ```
 </details>
 
-**Verdict (Tanmay):**  
+**Verdict (Tanmay):** ✅ agrees with Claude.  
 
 **Verdict (Claude):** ✅ 7th of the following month, holiday rule, statements on the 3rd. The example is correct arithmetic.
 
@@ -760,7 +760,7 @@ reversal from a prior cycle.
 ```
 </details>
 
-**Verdict (Tanmay):**  
+**Verdict (Tanmay):** ✅ agrees with Claude.  
 
 **Verdict (Claude):** ✅ 20% vs 5%; not refundable, claimed back on returns.
 
@@ -800,7 +800,7 @@ from in the CRM, so it cannot be left blank or corrected informally later.
 ```
 </details>
 
-**Verdict (Tanmay):**  
+**Verdict (Tanmay):** ✅ agrees with Claude.  
 
 **Verdict (Claude):** ✅ 15 hours from an accredited institute + the exam.
 
@@ -841,7 +841,7 @@ mapping job skip them for a missing region, which is a separate fix.
 ```
 </details>
 
-**Verdict (Tanmay):**  
+**Verdict (Tanmay):** ✅ agrees with Claude.  
 
 **Verdict (Claude):** ✅ Three business days after documents are complete.
 
@@ -883,7 +883,7 @@ underwriting.
 ```
 </details>
 
-**Verdict (Tanmay):**  
+**Verdict (Tanmay):** ✅ agrees with Claude.  
 
 **Verdict (Claude):** ✅ The life assured can never be changed.
 
@@ -953,7 +953,7 @@ Aadhaar.
 ```
 </details>
 
-**Verdict (Tanmay):**  
+**Verdict (Tanmay):** ⚠️ agrees with Claude.  
 
 **Verdict (Claude):** ⚠️ 'Two business days' is true and in the cited article, but not in the cited chunk [2]. It is in another chunk of the same article, so the citation points at the wrong chunk. The nomination-form and assignee claims are in [1].
 
@@ -1026,7 +1026,7 @@ The cap is 60 for senior agents and 25 for agents in their first 30 days.
 ```
 </details>
 
-**Verdict (Tanmay):**  
+**Verdict (Tanmay):** ✅ agrees with Claude.  
 
 **Verdict (Claude):** ✅ Open-lead cap; 40/60/25 from [5].
 
@@ -1107,7 +1107,7 @@ The cap is 60 for senior agents and 25 for agents in their first 30 days.
 ```
 </details>
 
-**Verdict (Tanmay):**  
+**Verdict (Tanmay):** ✅ agrees with Claude.  
 
 **Verdict (Claude):** ✅ 72 hours / 30 days. Small stretch: it defines 'touched' using the cap's list of worked statuses.
 

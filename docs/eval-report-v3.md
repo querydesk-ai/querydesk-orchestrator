@@ -14,7 +14,7 @@ Day 9's demo scenarios with the real ticketing service still have to be run.
 | Routing accuracy | **96%** (strict 94%) | ≥ 90% | ✅ |
 | Category accuracy on SR-bound queries | **100%** | ≥ 90% | ✅ |
 | Action requests wrongly answered with an article | **0%** | ≤ 5% | ✅ |
-| Answers supported by the cited article | **18 of 20** strictly (19 at article level); second judge pending: [answer-support-v1.md](answer-support-v1.md) | 18 of 20 | ✅ |
+| Answers supported by the cited article | **18 of 20** strictly (19 at article level), two judges agreeing: [answer-support-v1.md](answer-support-v1.md) | 18 of 20 | ✅ |
 | p95 latency, answer path | **7.9 s** (p50 5.8 s) | < 3 s | ❌ |
 | Decision layer latency | ~0 ms (rules); extraction p50 2.1 s on the SR path | < 500 ms | ✅ |
 | Status changes notified within 1 minute | **10 of 10** (median 3.1 s, max 8.3 s) | 10 of 10 | ✅ |
@@ -139,7 +139,7 @@ cited chunks in [answer-support-v1.md](answer-support-v1.md).
 | Judge | Fully supported | Notes |
 | --- | --- | --- |
 | Claude | **18 / 20** | ❌ inf-06, ⚠️ inf-18; 19 / 20 at article level |
-| Tanmay | *pending* | |
+| Tanmay | **18 / 20** | agrees on every row |
 
 - **inf-06 (❌):** the CAB facts are right, but the model derived a best/worst-case schedule the
   article doesn't give, and the worst case is wrong. A prompt rule against computing schedules or
