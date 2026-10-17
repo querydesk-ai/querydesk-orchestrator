@@ -43,3 +43,7 @@ class PostgresStoreError(UpstreamError):
 
 class JevError(UpstreamError):
     """Jev (via JevStation) failed, returned an unusable response, or isn't configured."""
+
+
+class LocalEmbedError(UpstreamError):
+    """The local fastembed dense model failed to load or to embed."""

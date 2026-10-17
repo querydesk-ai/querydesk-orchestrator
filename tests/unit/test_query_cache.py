@@ -71,6 +71,16 @@ def test_changing_the_model_changes_the_key(monkeypatch):
     assert query.cache_key("q") != before
 
 
+def test_switching_backend_changes_the_key(monkeypatch):
+    """A cached 4096-dim qwen3 vector must never be served to a 768-dim bge search."""
+    monkeypatch.setattr(settings, "embed_backend", "fireworks")
+    qwen3 = query.cache_key("q")
+    monkeypatch.setattr(settings, "embed_backend", "local")
+
+    assert query.cache_key("q") != qwen3
+    assert settings.local_embed_model in query.cache_key("q")
+
+
 @pytest.mark.anyio
 async def test_a_redis_outage_falls_back_to_fireworks(fireworks_calls, fake_redis, monkeypatch):
     async def broken(*args, **kwargs):

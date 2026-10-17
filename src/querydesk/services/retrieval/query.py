@@ -20,8 +20,8 @@ from qdrant_client import models
 
 from querydesk.core.config import settings
 from querydesk.core.errors import RedisStoreError
-from querydesk.services.llm.fireworks import embed_query
 from querydesk.services.retrieval import sparse
+from querydesk.services.retrieval.embedding import embed_query
 from querydesk.services.state import redis_store
 
 logger = logging.getLogger(__name__)
@@ -34,10 +34,10 @@ class QueryVectors:
 
 
 def cache_key(query: str) -> str:
-    """The model is part of the key, so switching models never serves stale vectors."""
+    """The active model is in the key, so switching model or backend never serves stale vectors."""
     normalised = " ".join(query.split())
     digest = hashlib.sha256(normalised.encode("utf-8")).hexdigest()
-    return f"qemb:{settings.fireworks_embed_model}:{digest}"
+    return f"qemb:{settings.embed_model_id}:{digest}"
 
 
 def _cache_enabled() -> bool:
@@ -67,7 +67,7 @@ async def _cached_dense(query: str) -> list[float]:
 
 
 async def embed_query_vectors(query: str) -> QueryVectors:
-    """Dense (cache or Fireworks, network) and sparse (BM25, CPU) embeddings, overlapped."""
+    """Dense (cache or the embed backend) and sparse (BM25, CPU) embeddings, overlapped."""
     holder: dict = {}
 
     async def _dense():

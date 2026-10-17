@@ -2,7 +2,7 @@
 Ingest the knowledge base and the category catalog into Qdrant. PRD Day 1.
 
 Reads data/kb/*.md (YAML front matter + markdown body) and data/categories.json,
-chunks the articles, embeds them densely (Fireworks) and sparsely (BM25), and
+chunks the articles, embeds them densely (the configured embed_backend) and sparsely (BM25), and
 upserts both collections.
 
 Point ids are deterministic, so re-running this updates chunks in place rather
@@ -26,9 +26,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from qdrant_client import models  # noqa: E402
 
 from querydesk.core.config import settings  # noqa: E402
-from querydesk.services.llm.fireworks import embed_documents  # noqa: E402
 from querydesk.services.retrieval import qdrant_store, sparse  # noqa: E402
 from querydesk.services.retrieval.chunking import chunk_text  # noqa: E402
+from querydesk.services.retrieval.embedding import embed_documents  # noqa: E402
 
 
 def parse_front_matter(raw: str) -> tuple[dict, str]:
@@ -156,6 +156,11 @@ async def ingest_categories() -> int:
 
 
 async def main(recreate: bool) -> None:
+    print(
+        f"Backend {settings.embed_backend} ({settings.embed_model_id}, "
+        f"{settings.embed_dim} dims) -> {settings.qdrant_kb_collection}, "
+        f"{settings.qdrant_categories_collection}"
+    )
     print(f"Ensuring collections (recreate={recreate})...")
     await qdrant_store.ensure_collections(recreate=recreate)
 

@@ -6,7 +6,8 @@ For every row: embed the query once, run hybrid search (top dense score +
 cited sources), route it, classify it and run the configured decision engine —
 including the real LLM field extraction on the SR path. Timings are recorded
 per stage. No answers are generated and no SRs are created, so a run costs one
-embedding per row plus one short LLM call per SR-bound row.
+embedding per row (none on the local embed_backend) plus one short LLM call
+per SR-bound row.
 
 With --tie-break it also asks the LLM tie-break to pick between the top two
 categories for every in-scope row, so eval_report.py can simulate any tie
@@ -35,6 +36,7 @@ from querydesk.core.config import BASE_DIR, settings  # noqa: E402
 from querydesk.eval.schema import Kind, load_eval_set  # noqa: E402
 from querydesk.services.decision.engine import DecisionInput, get_engine  # noqa: E402
 from querydesk.services.decision.signals import classify  # noqa: E402
+from querydesk.services.llm import local_embed  # noqa: E402
 from querydesk.services.retrieval import qdrant_store  # noqa: E402
 from querydesk.services.retrieval.query import embed_query_vectors  # noqa: E402
 from querydesk.services.routing.router import route, tie_break  # noqa: E402
@@ -83,6 +85,7 @@ async def run_row(row, engine, with_tie_break: bool) -> dict:
 
     return {
         **row.model_dump(mode="json"),
+        "embed_model": settings.embed_model_id,
         "top_dense_score": top_dense,
         "sources": [h.source_path for h in hits],
         "top_two": [[c.category_id, c.score] for c in router.top_two],
@@ -115,6 +118,10 @@ async def run_row(row, engine, with_tie_break: bool) -> dict:
 async def main(with_tie_break: bool) -> Path:
     # Measure real embedding latency: a warm query cache would hide it.
     settings.query_cache_enabled = False
+    if settings.embed_backend == "local":
+        # Load the model before timing: the first call reads ~440 MB of weights,
+        # a one-off per process that would otherwise land on row 1's embed.
+        await local_embed.embed_query("warm up")
     rows = load_eval_set()
     engine = get_engine()
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)

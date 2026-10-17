@@ -38,8 +38,14 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
 - **Day 8 (status questions, notifications API, chat page) done** on
   `feat/day8-status-chat-page` ([plan-day-8.md](plan-day-8.md)). Verified live in Chrome; eval
   (94 rows) 96% routing, 0% action answered, 6/6 status rows.
-- **Next up:** the bge-base trial (re-calibrates, so it also settles the threshold proposals in
-  `eval-report-latest.md`), contract v1.1, then the Day 9 demo scenarios.
+- **bge-base trial done, not adopted** ([embedding-trial.md](embedding-trial.md)): 30× faster
+  embed (68 ms p50) but routing ≤ 91.5% at any thresholds and out-of-scope messages reach the SR
+  path. `embed_backend` switch merged, set to `fireworks`. qwen3 thresholds unchanged;
+  `confidence_mid` 0.49 vs 0.56 is an open product call (same accuracy, different failure).
+- **Known limitation for the Day 9 report:** first-time-message answer path p95 is above 3 s on
+  qwen3 (embed ~2.4 s); mitigated by the Redis query cache. Warm the BM25 model at startup (first
+  `/chat` after boot pays ~2 s loading it).
+- **Next up:** contract v1.1, then the Day 9 demo scenarios.
 - **PR hygiene:** turn on "Automatically delete head branches" in the repo settings. Two stacked
   PRs (#6, #8) merged into their base branch instead of `main`.
 
@@ -290,8 +296,10 @@ latency.* Detail in [plan-days-4-5.md](plan-days-4-5.md#day-5--jev-and-the-laten
   query cache shipped (2.6 s → 30–60 ms on a repeat); spike in `scripts/latency_spike.py`. Keep
   qwen3 for now and trial `bge-base-en-v1.5` (97% action routing, 36 ms) through the full eval —
   [latency-recommendation.md](latency-recommendation.md).*
-- [ ] **T** bge-base trial behind an `embed_backend` setting, separate collections, full eval +
+- [x] **T** bge-base trial behind an `embed_backend` setting, separate collections, full eval +
   re-calibration; adopt only if it holds routing ≥ 95% and no wrong-category SRs. Before Day 8.
+  *Done 2026-10-17: not adopted — best 91.5% routing, 11/18 out-of-scope escalated (qwen3 96%,
+  15/18). Switch kept, off. [embedding-trial.md](embedding-trial.md).*
 - [ ] **P** Webhook outbox with HMAC signing and backoff retry.
 
 ### Day 6 — slot filling
@@ -362,7 +370,9 @@ Detail in [plan-day-8.md](plan-day-8.md).
 ### Day 9 — demo scenarios · **Checkpoint 3**
 *Done when: all 10 scenarios pass.*
 - [ ] **B** Run the 10 demo scenarios together (one end-to-end run per category); fix bugs.
-- [ ] **T** Final eval report (the PRD's "eval report v1"; v0–v2 already exist). **P** Contract
+- [ ] **T** Final eval report (the PRD's "eval report v1"; v0–v2 already exist). Record the
+  first-message p95 > 3 s on qwen3 with the query cache as mitigation
+  ([embedding-trial.md](embedding-trial.md)). **P** Contract
   tests against the OpenAPI file.
 
 ### Day 10 — ship

@@ -46,6 +46,13 @@ class Settings(BaseSettings):
     # Pool size for the orchestrator's Neon database (sr_requests).
     postgres_pool_max: int = 5
 
+    # --- Dense embeddings ---------------------------------------------------
+    # "fireworks" (qwen3-embedding-8b over the network, ~2 s per query) or
+    # "local" (fastembed on CPU, ~40 ms). Each needs its own collections and
+    # embed_dim (768 for bge-base) — see docs/embedding-trial.md.
+    embed_backend: str = "fireworks"
+    local_embed_model: str = "BAAI/bge-base-en-v1.5"
+
     # --- Retrieval -------------------------------------------------------
     qdrant_kb_collection: str = "kb_chunks"
     qdrant_categories_collection: str = "categories"
@@ -147,6 +154,13 @@ class Settings(BaseSettings):
     categories_file: Path = BASE_DIR / "data" / "categories.json"
     # Rule 6 (tighten-only overrides), owned by this repo.
     decision_rules_file: Path = BASE_DIR / "data" / "decision_rules.json"
+
+    @property
+    def embed_model_id(self) -> str:
+        """The active dense model's name — anything that names "the model" uses this."""
+        if self.embed_backend == "local":
+            return self.local_embed_model
+        return self.fireworks_embed_model
 
 
 # Single shared instance — import `settings` elsewhere, don't re-instantiate.
