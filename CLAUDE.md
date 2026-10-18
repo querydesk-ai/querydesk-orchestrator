@@ -61,6 +61,17 @@ uv run celery -A querydesk.worker beat -l info     # reconcile every reconcile_i
 uv run celery -A querydesk.worker call querydesk.reconcile   # one reconcile now
 ```
 
+Docker (`Dockerfile` targets `runtime` and `stand-in`; `compose.yaml` runs api, worker, beat, a
+local Redis, and with `--profile stand-in` the fake ticketing service). Inside compose,
+`REDIS_URL` is the local container and `TICKETING_BASE_URL` comes from
+`DOCKER_TICKETING_BASE_URL` (default `http://ticketing:8081`), never `.env`'s host address.
+
+```bash
+docker compose --profile stand-in up --build
+docker compose run --rm api python scripts/migrate.py
+docker build --target runtime -t querydesk-orchestrator .   # CI builds both targets
+```
+
 Dependencies live in `pyproject.toml` + `uv.lock` only — no `requirements.txt`. Commit `uv.lock`
 with every dependency change; CI runs `uv sync --locked` and fails if it is stale.
 
