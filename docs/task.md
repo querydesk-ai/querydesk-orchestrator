@@ -385,6 +385,9 @@ Detail in [plan-day-8.md](plan-day-8.md).
 - [x] **O** Eval: `status` kind + 6 rows; 96% routing, thresholds unchanged.
 - [x] **O** Chat page at phone width (390 px iframe): no horizontal scroll. Light theme not yet
   seen.
+- [~] **O** Orchestrator image and `compose.yaml` (api, worker, beat, local Redis, stand-in
+  profile); CI builds both targets. *Not yet run locally: Docker Desktop isn't installed.
+  Deployment notes for the ticketing team are in [docker.md](docker.md).*
 - [ ] **T** Docker Compose for the full stack, Nginx, structured logs with a correlation id.
 
 ### Day 9 — demo scenarios · **Checkpoint 3**

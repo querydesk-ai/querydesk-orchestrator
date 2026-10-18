@@ -1,0 +1,82 @@
+# The orchestrator stack: api, notification worker, reconcile beat and a local
+# Redis. Qdrant, Neon and Fireworks stay in the cloud, configured in .env.
+#
+#   docker compose --profile stand-in up --build    # with the stand-in ticketing service
+#   docker compose run --rm api python scripts/migrate.py
+#
+# Once the real ticketing service is reachable, drop the profile and point
+# DOCKER_TICKETING_BASE_URL at it (in .env or the shell). It is a separate
+# name from TICKETING_BASE_URL on purpose: compose also reads .env for these
+# ${...} values, and the TICKETING_BASE_URL there is a host address
+# (127.0.0.1), which means nothing inside a container.
+
+x-app: &app
+  build:
+    context: .
+    target: runtime
+  image: querydesk-orchestrator
+  env_file: .env
+  environment:
+    # The local Redis, not Upstash: the demo saves the free-tier command quota
+    # (Celery's broker traffic would burn it).
+    REDIS_URL: redis://redis:6379/0
+    TICKETING_BASE_URL: ${DOCKER_TICKETING_BASE_URL:-http://ticketing:8081}
+  depends_on:
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
+
+services:
+  api:
+    <<: *app
+    ports:
+      - "8000:8000"
+
+  worker:
+    <<: *app
+    # Concurrency 1 keeps each user's messages in order.
+    command:
+      - celery
+      - -A
+      - querydesk.worker
+      - worker
+      - --concurrency=1
+      - -l
+      - info
+      - --without-gossip
+      - --without-mingle
+      - --without-heartbeat
+    healthcheck:
+      disable: true
+
+  beat:
+    <<: *app
+    # Reconcile every RECONCILE_INTERVAL_S (10 minutes by default).
+    command: ["celery", "-A", "querydesk.worker", "beat", "-l", "info", "-s", "/tmp/celerybeat-schedule"]
+    healthcheck:
+      disable: true
+
+  redis:
+    image: redis:7.4-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # The PRD v1.1 stand-in (tests/fakes/fake_ticketing.py), until the real
+  # ticketing service is deployed. Approve SRs in its Swagger UI at
+  # http://localhost:8081/docs; it sends signed status webhooks to the api.
+  ticketing:
+    build:
+      context: .
+      target: stand-in
+    image: querydesk-stand-in
+    profiles: ["stand-in"]
+    env_file: .env
+    environment:
+      STAND_IN_WEBHOOK_URL: http://api:8000/webhooks/sr-status
+    ports:
+      - "8081:8081"
+    restart: unless-stopped

@@ -153,6 +153,32 @@ The rules behind the decisions:
 Other endpoints: `GET /health`, `GET /health/ready` (also pings Qdrant), `GET /notifications`,
 `POST /notifications/read`, `POST /webhooks/sr-status` (HMAC-signed, for the ticketing service).
 
+## Run with Docker
+
+`compose.yaml` runs the orchestrator stack:
+- `api` on port 8000;
+- `worker`, the notification worker;
+- `beat`, which reconciles every 10 minutes;
+- a local `redis`;
+- with the `stand-in` profile, the stand-in ticketing service on 8081.
+
+Qdrant, Neon and Fireworks stay in the cloud and are read from `.env`. Redis is the local
+container, not Upstash, so the demo doesn't spend the free-tier quota.
+
+```bash
+cp .env.example .env                                  # then fill it in, as in Setup
+docker compose run --rm api python scripts/migrate.py # once per database
+docker compose --profile stand-in up --build          # chat page at http://localhost:8000/
+```
+
+- **Play the approver** in the stand-in's Swagger at `http://localhost:8081/docs`.
+- **The real ticketing service:** once it's reachable, run without the profile and set
+  `DOCKER_TICKETING_BASE_URL` in `.env`.
+- **The BM25 model is baked into the image**, so containers start without downloading it.
+
+The ticketing team's deployment notes are in [docs/docker.md](docs/docker.md): which port to
+proxy, and the env vars.
+
 ## Tests
 
 The suite is fully offline: Fireworks and Jev are mocked with `respx`, Qdrant is monkeypatched,
