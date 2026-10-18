@@ -103,7 +103,10 @@ Everything after SR creation is async (webhook → Redis → Celery).
   conversation and is acted on normally. The fresh flow: embed once → `rag.retrieve()` +
   `router.route()` concurrently → `signals.classify()` → `engine.decide()` → act (generate / create
   SR / ask for fields and open a conversation / escalate) → one `querydesk.decision` log line with
-  its `turn` (PRD F10). A bare "cancel" with nothing open is answered without a search or a record.
+  its `turn` (PRD F10). `_log()` also hands the same record to `postgres_store.record_decision()`
+  as a background task (held in `_decision_writes`, awaited by `drain_decision_writes()` on
+  shutdown): it never adds latency and a failed write is only a warning; no `POSTGRES_DSN` means
+  no write. A bare "cancel" with nothing open is answered without a search or a record.
   The route in `api/routes/chat.py` stays a thin adapter.
 - Before asking for details **and** before raising, `_already_open()` checks
   `ticketing.list_open_srs()`: one open SR per user and category (F5), reported as `RAISE_SR` with
@@ -214,7 +217,8 @@ Each service owns its own Neon Postgres database; they share nothing but the API
 
 - **Qdrant**: `kb_chunks` (named vectors `dense` + `bm25`) and `categories` (dense only).
 - **Postgres** (`sr_orchestrator`): `sr_requests` (Day 6, `migrations/001_sr_requests.sql`),
-  `notifications` (Day 7, `002_notifications.sql`); `decision_logs` later. Schema changes are plain SQL files in `migrations/`,
+  `notifications` (Day 7, `002_notifications.sql`), `decision_logs` (PRD F10,
+  `003_decision_logs.sql`). Schema changes are plain SQL files in `migrations/`,
   applied in name order by `scripts/migrate.py` and tracked in `schema_migrations` — never edit an
   applied one. Only `services/state/postgres_store.py` connects from app code.
 - **Redis**: reached over `REDIS_URL` (`rediss://`, the native protocol to Upstash, never its REST

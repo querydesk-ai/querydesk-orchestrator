@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 
 from querydesk.api.routes import chat, health, notifications, webhooks
 from querydesk.core.errors import VectorStoreError
+from querydesk.services import pipeline
 from querydesk.services.retrieval import sparse
 from querydesk.services.retrieval.qdrant_store import ensure_collections
 from querydesk.services.state import postgres_store, redis_store
@@ -51,6 +52,8 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error("BM25 model not loaded at startup, will load on first use: %s", e)
     yield
+    # Decision rows still being written need the Postgres pool.
+    await pipeline.drain_decision_writes()
     await ticketing.aclose()
     await redis_store.aclose()
     await postgres_store.aclose()

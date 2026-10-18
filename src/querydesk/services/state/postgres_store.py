@@ -4,13 +4,15 @@ sr_orchestrator). Nothing else may open a connection to it.
 
 Day 6 records every raised SR and every escalation in sr_requests
 (migrations/001_sr_requests.sql, applied by scripts/migrate.py); Day 7 adds
-one notifications row per status change (002_notifications.sql). Every
+one notifications row per status change (002_notifications.sql), and every
+decision the pipeline makes goes to decision_logs (003, PRD F10). Every
 failure, including a missing POSTGRES_DSN, raises PostgresStoreError; the
 caller decides what a failed write means (pipeline.py: an SR is still
 returned, an escalation falls back to "contact the desk").
 """
 
 import json
+from datetime import datetime
 
 import asyncpg
 
@@ -33,6 +35,32 @@ VALUES ($1, $2, $3, $4)
 ON CONFLICT (sr_id, status) DO NOTHING
 RETURNING id
 """
+
+_INSERT_DECISION = """
+INSERT INTO decision_logs (
+    user_id, query, turn, top_dense_score, router_top_two, jev_output, engine,
+    decision, rule, category_id, sr_id, error, latency_ms, details, created_at
+) VALUES (
+    $1, $2, $3, $4, $5::jsonb, NULL, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14
+)
+RETURNING id
+"""
+
+# The decision record's own columns; everything else goes to `details`.
+_DECISION_COLUMNS = (
+    "user_id",
+    "query",
+    "turn",
+    "top_dense_score",
+    "router_top_two",
+    "engine",
+    "decision",
+    "rule",
+    "category_id",
+    "sr_id",
+    "error",
+    "latency_ms",
+)
 
 # A user's notifications, newest first; $2 = true keeps only the unread ones.
 _LIST_NOTIFICATIONS = """
@@ -139,6 +167,36 @@ async def record_escalation(
         retrieval_confidence,
         None,
     )
+
+
+async def record_decision(record: dict, *, at: datetime) -> int:
+    """
+    Write one decision record (the dict pipeline._log() logs) to decision_logs,
+    made at `at`. Returns the row id. Keys that aren't columns are kept in
+    `details`.
+    """
+    details = {k: v for k, v in record.items() if k not in _DECISION_COLUMNS}
+    pool = await _get_pool()
+    try:
+        return await pool.fetchval(
+            _INSERT_DECISION,
+            record["user_id"],
+            record["query"],
+            record["turn"],
+            record["top_dense_score"],
+            json.dumps(record["router_top_two"]) if record["router_top_two"] is not None else None,
+            record["engine"],
+            record["decision"],
+            record["rule"],
+            record["category_id"],
+            record["sr_id"],
+            record["error"],
+            json.dumps(record["latency_ms"]),
+            json.dumps(details),
+            at,
+        )
+    except _ERRORS as e:
+        raise PostgresStoreError(f"Postgres insert into decision_logs failed: {e}") from e
 
 
 async def record_status_change(

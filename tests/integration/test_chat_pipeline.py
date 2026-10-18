@@ -388,6 +388,83 @@ async def test_a_failed_sr_creation_still_logs_its_decision(world, monkeypatch, 
     assert entry["sr_id"] is None
 
 
+@pytest.fixture
+def decision_rows(world, monkeypatch):
+    """decision_logs writes, recorded in memory (POSTGRES_DSN set, so they happen)."""
+    rows = []
+
+    async def fake_record_decision(record, *, at):
+        rows.append(record)
+        return len(rows)
+
+    monkeypatch.setattr(settings, "postgres_dsn", "postgresql://fake")
+    monkeypatch.setattr(postgres_store, "record_decision", fake_record_decision)
+    return rows
+
+
+@pytest.mark.anyio
+async def test_every_decision_path_writes_one_decision_row(world, decision_rows):
+    """PRD F10: answer, SR, status, collect + follow-up, cancel, escalate — one row each."""
+    replies = [(await _chat("does a rolling restart cause downtime?")).json()]
+    replies.append((await _chat("restart the claims app in UAT, it's hung")).json())
+    replies.append((await _chat("what's the status of my requests?")).json())
+    _uat(world, '{"environment": "UAT-2", "extend_until": null, "reason": null}')
+    replies.append((await _chat("extend UAT-2 please", user_id="u2")).json())
+    replies.append((await _chat("cancel", user_id="u2")).json())
+    replies.append((await _chat("cancel", user_id="u2")).json())  # nothing open
+    world.dense_score = 0.17
+    world.categories = [CategoryHit("it_password_reset", "Password", "d", 0.15)]
+    replies.append((await _chat("what is the capital of Peru?", user_id="u3")).json())
+    await pipeline.drain_decision_writes()
+
+    assert [r["decision"] for r in decision_rows] == [r["decision"] for r in replies]
+    assert [r["decision"] for r in replies] == [
+        "ANSWER",
+        "RAISE_SR",
+        "STATUS_LOOKUP",
+        "COLLECT_DETAILS",
+        "CANCELLED",
+        "CANCELLED",
+        "ESCALATE",
+    ]
+    raised = decision_rows[1]
+    assert raised["user_id"] == "u1" and raised["sr_id"] == "1001" and raised["rule"] == 4
+    assert decision_rows[4]["turn"] == 1  # the cancel answered the open conversation
+
+
+@pytest.mark.anyio
+async def test_a_failed_decision_write_still_returns_the_reply(
+    world, decision_rows, monkeypatch, caplog
+):
+    async def postgres_down(record, *, at):
+        raise PostgresStoreError("Postgres connect failed")
+
+    monkeypatch.setattr(postgres_store, "record_decision", postgres_down)
+
+    with caplog.at_level(logging.WARNING, logger="querydesk.services.pipeline"):
+        resp = await _chat("restart the claims app in UAT, it's hung")
+        await pipeline.drain_decision_writes()
+
+    assert resp.status_code == 200 and resp.json()["sr_id"] == "1001"
+    assert "decision_logs write failed" in caplog.text
+    assert not pipeline._decision_writes
+
+
+@pytest.mark.anyio
+async def test_no_postgres_dsn_writes_no_decision_row(world, monkeypatch):
+    calls = []
+
+    async def record_decision(record, *, at):
+        calls.append(record)
+
+    monkeypatch.setattr(postgres_store, "record_decision", record_decision)
+
+    resp = await _chat("does a rolling restart cause downtime?")  # conftest: no POSTGRES_DSN
+    await pipeline.drain_decision_writes()
+
+    assert resp.status_code == 200 and calls == []
+
+
 # --- Slot filling (Day 6, PRD F4) ----------------------------------------------
 
 UAT = [
