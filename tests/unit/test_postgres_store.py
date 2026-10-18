@@ -1,9 +1,11 @@
 """
-sr_requests writes and their error mapping. No live database: asyncpg's
-create_pool is replaced with a fake pool that records each insert.
+sr_requests, notifications and decision_logs writes and their error mapping.
+No live database: asyncpg's create_pool is replaced with a fake pool that
+records each insert.
 """
 
 import json
+from datetime import UTC, datetime
 
 import asyncpg
 import pytest
@@ -135,6 +137,74 @@ async def test_record_escalation_has_no_ticket_and_is_manual(pool):
     assert args[2] is None  # category_id
     assert args[4:7] == ("ESCALATED", "MANUAL_ESCALATION", False)
     assert args[8] is None  # nothing to notify about
+
+
+AT = datetime(2026, 10, 18, 9, 30, tzinfo=UTC)
+
+
+def _decision(**overrides):
+    record = {
+        "user_id": "u1",
+        "query": "restart the claims app in UAT",
+        "turn": 0,
+        "top_dense_score": 0.61,
+        "router_top_two": [["it_application_restart", 0.62], ["it_add_server_cluster", 0.41]],
+        "router_confident": True,
+        "intent": {"is_action": True, "is_status": False},
+        "engine": "rules",
+        "decision": "RAISE_SR",
+        "rule": 4,
+        "category_id": "it_application_restart",
+        "missing_fields": [],
+        "requires_approval": False,
+        "overrides": [],
+        "extraction_ok": True,
+        "sr_id": "1001",
+        "error": None,
+        "latency_ms": {"embed": 210.0, "total": 900.0},
+    }
+    return {**record, **overrides}
+
+
+@pytest.mark.anyio
+async def test_record_decision_maps_columns_and_keeps_the_rest_in_details(pool):
+    row_id = await postgres_store.record_decision(_decision(), at=AT)
+
+    assert row_id == 1
+    [(sql, args)] = pool.calls
+    assert "INSERT INTO decision_logs" in sql
+    user_id, query, turn, score, top_two, engine, decision, rule, category, sr_id, error = args[:11]
+    assert (user_id, query, turn, score) == ("u1", "restart the claims app in UAT", 0, 0.61)
+    assert json.loads(top_two)[0] == ["it_application_restart", 0.62]
+    assert (engine, decision, rule, category) == ("rules", "RAISE_SR", 4, "it_application_restart")
+    assert (sr_id, error) == ("1001", None)
+    assert json.loads(args[11]) == {"embed": 210.0, "total": 900.0}
+    assert json.loads(args[12]) == {
+        "router_confident": True,
+        "intent": {"is_action": True, "is_status": False},
+        "missing_fields": [],
+        "requires_approval": False,
+        "overrides": [],
+        "extraction_ok": True,
+    }
+    assert args[13] == AT  # when it was decided, not when the write ran
+
+
+@pytest.mark.anyio
+async def test_a_follow_up_decision_has_no_router_top_two(pool):
+    await postgres_store.record_decision(
+        _decision(router_top_two=None, top_dense_score=None), at=AT
+    )
+
+    [(_, args)] = pool.calls
+    assert args[3] is None and args[4] is None  # SQL NULL, not the JSON string "null"
+
+
+@pytest.mark.anyio
+async def test_decision_insert_failure_is_a_postgres_store_error(pool):
+    pool.error = asyncpg.UndefinedTableError("no decision_logs")
+    with pytest.raises(PostgresStoreError, match="decision_logs"):
+        await postgres_store.record_decision(_decision(), at=AT)
 
 
 @pytest.mark.anyio

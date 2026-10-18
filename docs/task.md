@@ -37,7 +37,8 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
 - **Infra:**
   - CI is green; the gitleaks licence secret is set.
   - Redis is reached over `REDIS_URL` (`rediss://` native protocol to Upstash, not its REST API).
-  - Postgres (Neon) holds `sr_requests` (`scripts/migrate.py`, 001 applied 2026-10-15).
+  - Postgres (Neon) holds `sr_requests`, `notifications` and `decision_logs`
+    (`scripts/migrate.py`; 001–003 applied, 003 on 2026-10-18).
 - **Day 6 (slot filling) done**, merged in PRs #10 and #11. Verified live (stand-in ticketing,
   Fireworks, Upstash, Neon): "keep UAT-2 up for release testing" → asks for extend until → "till
   11 PM" → SR with approval, a row in `sr_requests`; the resend gets "already open"; out of scope →
@@ -272,7 +273,8 @@ score ≥ high).
   Redis state is Day 6) / escalate. Add `decision` (and `sr_id` when one is created) to
   `ChatResponse`.
 - [x] **O** Log every decision (F10) as one structured log line with inputs, outputs, engine and
-  `latency_ms`; it moves into the `decision_logs` table with Postgres on Day 6.
+  `latency_ms`. *Since 2026-10-18 the same record is also written to `decision_logs`
+  (`003_decision_logs.sql`, applied to Neon), in the background so it adds no latency.*
 - [x] **O** Extend `eval_run.py` / `eval_report.py` with **routing accuracy** (decision matches the
   label, target ≥ 90%) and **action requests answered with an article** (target ≤ 5%). This becomes
   the baseline the Day 5 Jev engine has to beat. *Result: 96% and 0% — `docs/eval-report-v1.md`.*

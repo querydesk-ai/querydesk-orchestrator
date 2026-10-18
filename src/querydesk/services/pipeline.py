@@ -13,14 +13,17 @@ request) closes the conversation and is handled normally.
 generating an answer, creating an SR, asking for missing details (which opens
 a slot-filling conversation, docs/plan-day-6.md), or escalating. Raised SRs
 and escalations are recorded in sr_requests. Every message logs one
-structured decision line (PRD F10) carrying its `turn` in the conversation.
+structured decision line (PRD F10) carrying its `turn` in the conversation,
+and the same record is written to decision_logs in the background.
 """
 
+import asyncio
 import json
 import logging
 import re
 import time
 from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
 
 import anyio
 
@@ -301,39 +304,69 @@ def _log(
     error: str | None = None,
 ) -> None:
     """
-    One line per message. A follow-up that stated a field searched nothing,
-    so it has no retrieval or router.
+    One record per message, logged and written to decision_logs. A follow-up
+    that stated a field searched nothing, so it has no retrieval or router.
     """
     if retrieval is not None and confidence is None:
         confidence = retrieval.top_dense_score
-    decision_log.info(
-        json.dumps(
-            {
-                "user_id": user_id,
-                "query": query,
-                # 0 for a fresh message, then 1, 2… for each reply in a conversation.
-                "turn": turn,
-                "top_dense_score": round(confidence, 4) if confidence is not None else None,
-                "router_top_two": (
-                    [[c.category_id, round(c.score, 4)] for c in router.top_two] if router else None
-                ),
-                "router_confident": router.confident if router else None,
-                "intent": asdict(intent),
-                "engine": out.engine,
-                "decision": out.decision.value,
-                "rule": out.rule,
-                "category_id": out.category_id,
-                "missing_fields": out.missing_fields,
-                "requires_approval": out.requires_approval,
-                "overrides": out.overrides,
-                "extraction_ok": out.extraction_ok,
-                "sr_id": result.sr_id if result else None,
-                # Set when acting on the decision failed (generation, SR creation).
-                "error": error,
-                "latency_ms": timings,
-            }
-        )
-    )
+    record = {
+        "user_id": user_id,
+        "query": query,
+        # 0 for a fresh message, then 1, 2… for each reply in a conversation.
+        "turn": turn,
+        "top_dense_score": round(confidence, 4) if confidence is not None else None,
+        "router_top_two": (
+            [[c.category_id, round(c.score, 4)] for c in router.top_two] if router else None
+        ),
+        "router_confident": router.confident if router else None,
+        "intent": asdict(intent),
+        "engine": out.engine,
+        "decision": out.decision.value,
+        "rule": out.rule,
+        "category_id": out.category_id,
+        "missing_fields": out.missing_fields,
+        "requires_approval": out.requires_approval,
+        "overrides": out.overrides,
+        "extraction_ok": out.extraction_ok,
+        "sr_id": result.sr_id if result else None,
+        # Set when acting on the decision failed (generation, SR creation).
+        "error": error,
+        "latency_ms": timings,
+    }
+    decision_log.info(json.dumps(record))
+    _record_decision(record)
+
+
+# Decision rows being written. The event loop keeps only weak references to
+# tasks, so this holds each one until it finishes.
+_decision_writes: set[asyncio.Task] = set()
+
+
+def _record_decision(record: dict) -> None:
+    """
+    Write the decision to decision_logs in the background: the Neon round trip
+    (~100–300 ms) never adds to the reply's latency, and a failed write is
+    logged, never raised — the log line above already has the record. No
+    POSTGRES_DSN means nothing to write to.
+    """
+    if not settings.postgres_dsn:
+        return
+    write = postgres_store.record_decision(record, at=datetime.now(UTC))
+    task = asyncio.get_running_loop().create_task(write)
+    _decision_writes.add(task)
+    task.add_done_callback(_decision_written)
+
+
+def _decision_written(task: asyncio.Task) -> None:
+    _decision_writes.discard(task)
+    if not task.cancelled() and task.exception() is not None:
+        logger.warning("decision_logs write failed: %s", task.exception())
+
+
+async def drain_decision_writes() -> None:
+    """Wait for the decision rows still being written (app shutdown, tests)."""
+    if _decision_writes:
+        await asyncio.gather(*_decision_writes, return_exceptions=True)
 
 
 async def _advance(user_id: str, query: str, conv: Conversation, out: DecisionOutput) -> ChatResult:
