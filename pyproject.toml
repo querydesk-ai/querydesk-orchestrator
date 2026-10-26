@@ -23,6 +23,8 @@ dependencies = [
   # Day 7: webhook notify task + reconciliation beat. No [redis] extra: it caps
   # redis-py below the 8.x pinned above; kombu imports redis-py directly.
   "celery==5.6.3",
+  # WhatsApp: Twilio posts each inbound message as a form.
+  "python-multipart==0.0.32",
 ]
 
 # Dev tooling. `uv sync` installs this group by default; uv.lock pins the full tree.

@@ -93,7 +93,9 @@ Everything after SR creation is async (webhook → Redis → Celery).
   fastembed dense model), `services/retrieval/qdrant_store.py` (vector
   search), `services/retrieval/sparse.py` (BM25), `services/ticketing/client.py` (the ticketing
   service), `services/state/redis_store.py` (Redis), `services/state/postgres_store.py` (the
-  orchestrator's Neon DB), `services/llm/jev.py` (Jev, via JevStation).
+  orchestrator's Neon DB), `services/llm/jev.py` (Jev, via JevStation),
+  `services/messaging/meta.py` (Meta's WhatsApp Cloud API), `services/messaging/twilio.py`
+  (Twilio's WhatsApp API).
   The Celery app is `src/querydesk/worker.py`; its tasks are thin and call `services/` code.
   Each raises a subclass of `UpstreamError` (`core/errors.py`), and the routers map that whole
   family to HTTP 502 in one place.
@@ -156,6 +158,21 @@ Everything after SR creation is async (webhook → Redis → Celery).
   `user_id` is a parameter everywhere, as on `/chat`. `GET /` serves the one-file chat page
   (`src/querydesk/static/index.html`, vanilla JS, no CDN), which polls unread notifications every
   10 s and marks them read once shown.
+- **WhatsApp** ([docs/whatsapp.md](docs/whatsapp.md)) is a private one-to-one chat, never a
+  broadcast or group, through `whatsapp_provider` `meta` (default, free test number) or `twilio`;
+  off unless that provider's settings and `whatsapp_id_secret` are set. Provider-neutral code is
+  `services/messaging/whatsapp.py` (identity, `send()` dispatch) and `text.py` (formatting);
+  numbers are E.164 between modules. `/webhooks/whatsapp` (`api/routes/whatsapp.py`): GET is
+  Meta's verify-token check; POST verifies the provider's signature (Meta: HMAC-SHA256 of the raw
+  body; Twilio: against `whatsapp_public_url`, never the request's own URL), drops a repeated
+  message id, queues `querydesk.whatsapp_message` and answers at once.
+  The worker runs `services/messaging/inbound.py::reply_to()`, the same `handle_message()` as
+  `/chat`, and must `drain_decision_writes()` before the task returns. That task never retries
+  (a rerun could advance a conversation twice); `whatsapp_send` retries provider failures. The
+  pipeline only ever sees `user_id_for(phone)` (`wa-` + HMAC): **a phone number never reaches the
+  ticketing service, logs or `decision_logs`**; only `whatsapp_users` holds it. Status updates
+  reach WhatsApp from `handle_status_change()` after a *new* notification is written, so the
+  existing dedupe also prevents double messages.
 - Use the **async** Qdrant client (`AsyncQdrantClient`). The `/chat` path is async and the sync client
   would block the event loop. `fastembed` is sync and CPU-bound, so call it through
   `anyio.to_thread.run_sync` from async code.
@@ -229,14 +246,14 @@ Each service owns its own Neon Postgres database; they share nothing but the API
 - **Qdrant**: `kb_chunks` (named vectors `dense` + `bm25`) and `categories` (dense only).
 - **Postgres** (`sr_orchestrator`): `sr_requests` (Day 6, `migrations/001_sr_requests.sql`),
   `notifications` (Day 7, `002_notifications.sql`), `decision_logs` (PRD F10,
-  `003_decision_logs.sql`). Schema changes are plain SQL files in `migrations/`,
+  `003_decision_logs.sql`), `whatsapp_users` (`004_whatsapp_users.sql`). Schema changes are plain SQL files in `migrations/`,
   applied in name order by `scripts/migrate.py` and tracked in `schema_migrations` — never edit an
   applied one. Only `services/state/postgres_store.py` connects from app code.
 - **Redis**: reached over `REDIS_URL` (`rediss://`, the native protocol to Upstash, never its REST
   API), only through `services/state/redis_store.py`. Holds the query-embedding cache
   (`qemb:*`), `conversation:{user_id}` slot-filling state (`conversation_ttl_s`, 30 minutes;
-  `services/conversation.py`), the reconciliation watermark (`reconcile:since`) and the Celery
-  broker.
+  `services/conversation.py`), the reconciliation watermark (`reconcile:since`), seen WhatsApp
+  messages (`wa:msg:{MessageSid}`) and the Celery broker.
   Run dev workers with `--without-gossip --without-mingle --without-heartbeat` — an idle Celery
   worker will otherwise burn the Upstash free-tier command quota.
 
@@ -245,4 +262,5 @@ Each service owns its own Neon Postgres database; they share nothing but the API
 `.env` is gitignored and holds live credentials; `gitleaks` runs in CI. Never commit it, never paste
 key values into code, logs or test fixtures. `FIREWORKS_API_KEY` is required for ingestion and the
 answer path; `TYPESAFE_API_KEY` (JevStation) is used only by `scripts/jev_compare.py`; `WEBHOOK_SECRET` is shared
-with the ticketing service.
+with the ticketing service. `META_APP_SECRET` / `TWILIO_AUTH_TOKEN` verify the WhatsApp provider's
+signatures; `WHATSAPP_ID_SECRET` keys the `wa-` user ids, so changing it re-identifies every user.

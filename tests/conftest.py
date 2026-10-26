@@ -44,6 +44,21 @@ def no_query_cache(monkeypatch):
     # unless a test hands it a target.
     monkeypatch.setattr(settings, "webhook_secret", "test-secret")
     monkeypatch.setattr(settings, "stand_in_webhook_url", "")
+    # WhatsApp is off, whatever a developer's .env holds; tests that need it
+    # turn it on with fake credentials.
+    monkeypatch.setattr(settings, "whatsapp_provider", "meta")
+    for name in (
+        "meta_access_token",
+        "meta_phone_number_id",
+        "meta_app_secret",
+        "meta_verify_token",
+        "twilio_account_sid",
+        "twilio_auth_token",
+        "twilio_whatsapp_from",
+        "whatsapp_public_url",
+        "whatsapp_id_secret",
+    ):
+        monkeypatch.setattr(settings, name, "")
     redis_store._client = None
     yield
     redis_store._client = None

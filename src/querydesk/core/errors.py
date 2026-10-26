@@ -47,3 +47,17 @@ class JevError(UpstreamError):
 
 class LocalEmbedError(UpstreamError):
     """The local fastembed dense model failed to load or to embed."""
+
+
+class WhatsAppError(UpstreamError):
+    """
+    The WhatsApp provider (Meta's Cloud API or Twilio) failed to take a
+    message, or isn't configured.
+
+    `retryable` is False when the provider rejected the message itself (a 4xx
+    such as an invalid number): sending it again would fail the same way.
+    """
+
+    def __init__(self, message: str, *, retryable: bool = True):
+        super().__init__(message)
+        self.retryable = retryable

@@ -32,7 +32,7 @@ Proxy everything to the `api` service on port 8000:
 - `/webhooks/sr-status`: the ticketing service's status webhooks. If the ticketing service is on
   the same Compose network, it can post to `http://api:8000/webhooks/sr-status` directly,
   without going through Nginx.
-- `/webhooks/whatsapp`: Twilio's inbound messages, once that PR lands.
+- `/webhooks/whatsapp`: inbound WhatsApp messages, GET and POST ([whatsapp.md](whatsapp.md)).
 - `/docs`: Swagger. Leave it out of the public site if you prefer.
 
 Set `proxy_read_timeout` to at least 30 s. A chat answer takes 5–8 s end to end.
@@ -53,6 +53,7 @@ Every orchestrator process reads the same variables. `.env.example` lists them.
 | `REDIS_URL` | The query cache, conversations and the Celery broker. Use a Redis container (`redis://redis:6379/0`) rather than Upstash: Celery's broker traffic would use up the free tier. |
 | `TICKETING_BASE_URL` | The ticketing service as the orchestrator reaches it, e.g. `http://ticketing:8080`. |
 | `WEBHOOK_SECRET` | The same value as the ticketing service's signing secret. |
+| `WHATSAPP_PROVIDER`, `WHATSAPP_ID_SECRET`, `META_*` (or `TWILIO_*` + `WHATSAPP_PUBLIC_URL`) | WhatsApp, optional: off unless the provider's settings are all set. Proxy both GET and POST `/webhooks/whatsapp`. See [whatsapp.md](whatsapp.md). |
 
 Run the migrations once against the orchestrator's database before the first start:
 

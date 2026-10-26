@@ -149,6 +149,40 @@ class Settings(BaseSettings):
     # its signed status webhooks, e.g. http://127.0.0.1:8000/webhooks/sr-status.
     stand_in_webhook_url: str = ""
 
+    # --- WhatsApp ------------------------------------------------------------
+    # A private one-to-one chat with the bot (docs/whatsapp.md), through one of
+    # two providers: "meta" (Meta's WhatsApp Cloud API; its free test number is
+    # what the demo uses) or "twilio". WhatsApp is off unless the chosen
+    # provider's settings and whatsapp_id_secret are all set.
+    whatsapp_provider: str = "meta"
+    # Keys the user id derived from a phone number: "wa-" + HMAC(secret, phone).
+    # Changing it gives every WhatsApp user a new id (their open SRs stay
+    # under the old one).
+    whatsapp_id_secret: str = ""
+
+    # Meta's Cloud API (graph.facebook.com). The access token sends messages;
+    # the app secret verifies each webhook (X-Hub-Signature-256); the verify
+    # token answers Meta's one-off check when the webhook URL is saved.
+    meta_access_token: str = ""
+    meta_phone_number_id: str = ""
+    meta_app_secret: str = ""
+    meta_verify_token: str = ""
+    meta_graph_version: str = "v23.0"
+    meta_timeout_s: float = 10.0
+
+    # Twilio (a paid account: the free trial can't forward inbound messages).
+    twilio_account_sid: str = ""
+    # Also the key Twilio signs every inbound webhook with (X-Twilio-Signature);
+    # an API key can send messages but cannot verify those signatures.
+    twilio_auth_token: str = ""
+    # The bot's number, e.g. whatsapp:+14155238886 (the Sandbox).
+    twilio_whatsapp_from: str = ""
+    # The full public URL Twilio posts to, e.g. https://bot.example.com/webhooks/whatsapp.
+    # The signature covers it, and behind a proxy or tunnel the request's own
+    # URL differs, so it is configured rather than read from the request.
+    whatsapp_public_url: str = ""
+    twilio_timeout_s: float = 10.0
+
     # --- Content ---------------------------------------------------------
     kb_dir: Path = BASE_DIR / "data" / "kb"
     categories_file: Path = BASE_DIR / "data" / "categories.json"
@@ -161,6 +195,26 @@ class Settings(BaseSettings):
         if self.embed_backend == "local":
             return self.local_embed_model
         return self.fireworks_embed_model
+
+    @property
+    def whatsapp_enabled(self) -> bool:
+        if self.whatsapp_provider == "meta":
+            required = (
+                self.meta_access_token,
+                self.meta_phone_number_id,
+                self.meta_app_secret,
+                self.meta_verify_token,
+            )
+        elif self.whatsapp_provider == "twilio":
+            required = (
+                self.twilio_account_sid,
+                self.twilio_auth_token,
+                self.twilio_whatsapp_from,
+                self.whatsapp_public_url,
+            )
+        else:
+            return False
+        return all((*required, self.whatsapp_id_secret))
 
 
 # Single shared instance — import `settings` elsewhere, don't re-instantiate.
