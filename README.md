@@ -179,6 +179,14 @@ docker compose --profile stand-in up --build          # chat page at http://loca
 The ticketing team's deployment notes are in [docs/docker.md](docs/docker.md): which port to
 proxy, and the env vars.
 
+## WhatsApp
+
+Users can also chat with the bot on WhatsApp, through Meta's WhatsApp Cloud API (its free test
+number) or Twilio. Each user has a private one-to-one chat with the same answers, SRs and status
+questions as the chat page, and gets SR updates in the same chat. It is off unless the WhatsApp
+variables in `.env.example` are set. Setup, a local test with a tunnel, and the Sandbox limits are in
+[docs/whatsapp.md](docs/whatsapp.md).
+
 ## Tests
 
 The suite is fully offline: Fireworks and Jev are mocked with `respx`, Qdrant is monkeypatched,

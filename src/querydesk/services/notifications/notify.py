@@ -14,14 +14,21 @@ handle_status_change() is idempotent: notifications are unique per SR and
 status (migrations/002_notifications.sql), so a retried webhook, a replay or a
 reconciliation overlap writes nothing new. Messages are fixed templates — no
 LLM — and name the category through the catalog.
+
+A user who chats on WhatsApp also gets each new notification in that chat,
+queued as querydesk.whatsapp_send. It follows the write, so the same dedupe
+keeps a retried webhook from messaging them twice.
 """
 
 import logging
 from datetime import UTC, datetime, timedelta
 
+import anyio
+
 from querydesk.core.config import settings
-from querydesk.core.errors import RedisStoreError, TicketingError
+from querydesk.core.errors import PostgresStoreError, RedisStoreError, TicketingError
 from querydesk.services import catalog
+from querydesk.services.messaging import whatsapp
 from querydesk.services.state import postgres_store, redis_store
 from querydesk.services.ticketing import client as ticketing
 
@@ -114,7 +121,36 @@ async def handle_status_change(
         source,
         written,
     )
+    if written and whatsapp.is_whatsapp_user(user_id) and settings.whatsapp_enabled:
+        await _send_on_whatsapp(user_id, message)
     return written
+
+
+def _enqueue_whatsapp(phone: str, message: str) -> None:
+    # Imported here: the worker module imports this one.
+    from querydesk.worker import whatsapp_send
+
+    whatsapp_send.delay(phone, message)
+
+
+async def _send_on_whatsapp(user_id: str, message: str) -> None:
+    """
+    Queue the notification for the user's WhatsApp chat. The notification is
+    already stored, so a failure here is logged, never raised: a retry would
+    find it written and send nothing anyway.
+    """
+    try:
+        phone = await postgres_store.whatsapp_phone(user_id)
+    except PostgresStoreError as e:
+        logger.warning("No WhatsApp number for %s, update not sent: %s", user_id, e)
+        return
+    if phone is None:
+        logger.warning("No WhatsApp number recorded for %s, update not sent", user_id)
+        return
+    try:
+        await anyio.to_thread.run_sync(_enqueue_whatsapp, phone, message)
+    except Exception as e:  # kombu/redis raise several unrelated types
+        logger.warning("WhatsApp update for %s not queued: %s", user_id, e)
 
 
 def _parse(ts: str | None) -> datetime | None:

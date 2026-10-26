@@ -235,3 +235,91 @@ async def test_reconcile_without_redis_still_runs(store):
     )
 
     assert await notify.reconcile(now=NOW) == 1
+
+
+# --- WhatsApp fan-out ---------------------------------------------------------
+
+WA_USER = "wa-0123456789abcdef"
+WA_PHONE = "+15551234567"
+
+
+@pytest.fixture
+def wa(monkeypatch):
+    """WhatsApp on, one known user, and the send task's queue captured."""
+    for name, value in {
+        "whatsapp_provider": "meta",
+        "meta_access_token": "EAAtoken",
+        "meta_phone_number_id": "1234567890",
+        "meta_app_secret": "app-secret",
+        "meta_verify_token": "verify-me",
+        "whatsapp_id_secret": "id-secret",
+    }.items():
+        monkeypatch.setattr(settings, name, value)
+
+    async def phone(user_id):
+        return WA_PHONE if user_id == WA_USER else None
+
+    queued = []
+    monkeypatch.setattr(notify.postgres_store, "whatsapp_phone", phone)
+    monkeypatch.setattr(notify, "_enqueue_whatsapp", lambda p, m: queued.append((p, m)))
+    return queued
+
+
+@pytest.mark.anyio
+async def test_a_whatsapp_user_gets_the_update_in_their_chat_once(store, wa):
+    kwargs = {"sr_id": "1001", "user_id": WA_USER, "to_status": "APPROVED", "category_id": UAT}
+
+    await notify.handle_status_change(**kwargs)
+    await notify.handle_status_change(**kwargs)  # retried webhook: no second message
+
+    [(phone, message)] = wa
+    assert phone == WA_PHONE
+    assert message == store.rows[("1001", "APPROVED")][1]
+
+
+@pytest.mark.anyio
+async def test_a_chat_page_user_gets_no_whatsapp_message(store, wa):
+    await notify.handle_status_change(
+        sr_id="1001", user_id="sso12345", to_status="APPROVED", category_id=UAT
+    )
+
+    assert wa == []
+
+
+@pytest.mark.anyio
+async def test_no_whatsapp_when_it_is_off(store, wa, monkeypatch):
+    monkeypatch.setattr(settings, "meta_app_secret", "")
+
+    await notify.handle_status_change(
+        sr_id="1001", user_id=WA_USER, to_status="APPROVED", category_id=UAT
+    )
+
+    assert wa == []
+
+
+@pytest.mark.anyio
+async def test_an_unknown_number_or_a_lookup_failure_still_notifies(store, wa, monkeypatch):
+    assert await notify.handle_status_change(
+        sr_id="1001", user_id="wa-ffffffffffffffff", to_status="APPROVED", category_id=UAT
+    )
+
+    async def broken(user_id):
+        raise PostgresStoreError("Neon down")
+
+    monkeypatch.setattr(notify.postgres_store, "whatsapp_phone", broken)
+    assert await notify.handle_status_change(
+        sr_id="1002", user_id=WA_USER, to_status="APPROVED", category_id=UAT
+    )
+    assert wa == []
+
+
+@pytest.mark.anyio
+async def test_a_queue_failure_is_logged_not_raised(store, wa, monkeypatch):
+    def broken(phone, message):
+        raise ConnectionError("broker down")
+
+    monkeypatch.setattr(notify, "_enqueue_whatsapp", broken)
+
+    assert await notify.handle_status_change(
+        sr_id="1001", user_id=WA_USER, to_status="APPROVED", category_id=UAT
+    )

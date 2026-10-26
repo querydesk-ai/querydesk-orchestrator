@@ -5,7 +5,8 @@ sr_orchestrator). Nothing else may open a connection to it.
 Day 6 records every raised SR and every escalation in sr_requests
 (migrations/001_sr_requests.sql, applied by scripts/migrate.py); Day 7 adds
 one notifications row per status change (002_notifications.sql), and every
-decision the pipeline makes goes to decision_logs (003, PRD F10). Every
+decision the pipeline makes goes to decision_logs (003, PRD F10), and
+whatsapp_users (004) maps a WhatsApp user id back to its number. Every
 failure, including a missing POSTGRES_DSN, raises PostgresStoreError; the
 caller decides what a failed write means (pipeline.py: an SR is still
 returned, an escalation falls back to "contact the desk").
@@ -76,6 +77,13 @@ _MARK_READ = """
 UPDATE notifications SET read_at = now()
 WHERE user_id = $1 AND id = ANY($2::bigint[]) AND read_at IS NULL
 """
+
+_UPSERT_WHATSAPP_USER = """
+INSERT INTO whatsapp_users (user_id, phone) VALUES ($1, $2)
+ON CONFLICT (user_id) DO UPDATE SET phone = EXCLUDED.phone, last_seen_at = now()
+"""
+
+_WHATSAPP_PHONE = "SELECT phone FROM whatsapp_users WHERE user_id = $1"
 
 # Moves the recorded SR forward only: $3 lists the statuses ranked below the
 # new one, so an out-of-order webhook never sets an SR back.
@@ -222,6 +230,24 @@ async def record_status_change(
             return True
     except _ERRORS as e:
         raise PostgresStoreError(f"Postgres notification write failed: {e}") from e
+
+
+async def upsert_whatsapp_user(user_id: str, phone: str) -> None:
+    """Remember the WhatsApp number behind `user_id` (migrations/004), and when it last wrote."""
+    pool = await _get_pool()
+    try:
+        await pool.execute(_UPSERT_WHATSAPP_USER, user_id, phone)
+    except _ERRORS as e:
+        raise PostgresStoreError(f"Postgres whatsapp_users write failed: {e}") from e
+
+
+async def whatsapp_phone(user_id: str) -> str | None:
+    """The WhatsApp number behind `user_id`, or None if it never wrote in."""
+    pool = await _get_pool()
+    try:
+        return await pool.fetchval(_WHATSAPP_PHONE, user_id)
+    except _ERRORS as e:
+        raise PostgresStoreError(f"Postgres whatsapp_users read failed: {e}") from e
 
 
 async def list_notifications(user_id: str, *, unread_only: bool, limit: int) -> list[dict]:

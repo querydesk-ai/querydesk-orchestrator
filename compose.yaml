@@ -80,3 +80,21 @@ services:
     ports:
       - "8081:8081"
     restart: unless-stopped
+
+  # Local WhatsApp testing only (docs/whatsapp.md): a public HTTPS address for
+  # the api, so Twilio can reach it. Anyone with the address can reach the api
+  # while this runs; stop it when you're done. Gets only the ngrok settings,
+  # never the rest of .env.
+  #   docker compose --profile stand-in --profile tunnel up -d
+  tunnel:
+    image: ngrok/ngrok:3-alpine
+    profiles: ["tunnel"]
+    command: ["http", "api:8000", "--url=${NGROK_DOMAIN:-}"]
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
+    depends_on:
+      - api
+    ports:
+      # ngrok's inspector: every request Twilio sends, at http://localhost:4040
+      - "127.0.0.1:4040:4040"
+    restart: unless-stopped

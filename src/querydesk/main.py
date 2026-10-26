@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 
-from querydesk.api.routes import chat, health, notifications, webhooks
+from querydesk.api.routes import chat, health, notifications, webhooks, whatsapp
 from querydesk.core.errors import VectorStoreError
 from querydesk.services import pipeline
 from querydesk.services.retrieval import sparse
@@ -68,6 +68,7 @@ app = FastAPI(
 app.include_router(health.router)
 app.include_router(chat.router)
 app.include_router(webhooks.router)
+app.include_router(whatsapp.router)
 app.include_router(notifications.router)
 
 

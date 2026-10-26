@@ -2,7 +2,8 @@
 The only module that talks to Redis. Nothing else may open a Redis connection.
 
 It backs the query-embedding cache (bytes) and slot-filling state
-(conversation:{user_id}, JSON). Every failure — including a
+(conversation:{user_id}, JSON), and drops duplicate WhatsApp deliveries
+(wa:msg:{MessageSid}). Every failure — including a
 missing REDIS_URL — raises RedisStoreError, so callers decide whether Redis
 is optional (the cache) or required (conversation state).
 """
@@ -62,6 +63,14 @@ async def get_json(key: str):
 
 async def set_json(key: str, value, ttl_s: int) -> None:
     await set_bytes(key, json.dumps(value).encode("utf-8"), ttl_s)
+
+
+async def set_if_absent(key: str, ttl_s: int) -> bool:
+    """Claim `key` for `ttl_s`. True if it was free, False if already claimed (a duplicate)."""
+    try:
+        return bool(await _get_client().set(key, b"1", ex=ttl_s, nx=True))
+    except RedisError as e:
+        raise RedisStoreError(f"Redis SET NX failed: {e}") from e
 
 
 async def delete(key: str) -> None:

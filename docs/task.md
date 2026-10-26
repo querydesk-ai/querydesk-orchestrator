@@ -387,9 +387,13 @@ Detail in [plan-day-8.md](plan-day-8.md).
 - [x] **O** Eval: `status` kind + 6 rows; 96% routing, thresholds unchanged.
 - [x] **O** Chat page at phone width (390 px iframe): no horizontal scroll. Light theme not yet
   seen.
-- [~] **O** Orchestrator image and `compose.yaml` (api, worker, beat, local Redis, stand-in
-  profile); CI builds both targets. *Not yet run locally: Docker Desktop isn't installed.
-  Deployment notes for the ticketing team are in [docker.md](docker.md).*
+- [x] **O** Orchestrator image and `compose.yaml` (api, worker, beat, local Redis, stand-in
+  profile); CI builds both targets. Run locally on 2026-10-26: answer, SR, webhook and
+  notification all work in compose. Deployment notes for the ticketing team are in
+  [docker.md](docker.md).
+- [~] **O** WhatsApp chat through Meta's Cloud API or Twilio (`/webhooks/whatsapp`, migration 004): a
+  private one-to-one chat with the same pipeline, plus SR updates in the same thread. *Offline
+  tests pass; the live phone test needs a tunnel ([whatsapp.md](whatsapp.md)).*
 - [ ] **T** Docker Compose for the full stack, Nginx, structured logs with a correlation id.
 
 ### Day 9 — demo scenarios · **Checkpoint 3**

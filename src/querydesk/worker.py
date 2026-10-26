@@ -4,6 +4,8 @@ path (PRD architecture step 5).
 
   notify_status_change   one webhook event -> one notification (retried)
   reconcile              beat, every reconcile_interval_s: GET /sr?updated_since=
+  whatsapp_message       one inbound WhatsApp message -> the pipeline -> a reply
+  whatsapp_send          one message out through Twilio (retried)
 
 The broker is the same Redis as the rest of the app (REDIS_URL). Results are
 not stored. Run in dev with the quiet flags, or an idle worker burns the
@@ -19,11 +21,14 @@ import logging
 import ssl
 
 from celery import Celery
+from celery.signals import worker_process_init
 
 from querydesk.core.config import settings
-from querydesk.core.errors import UpstreamError
+from querydesk.core.errors import UpstreamError, WhatsAppError
 from querydesk.models.schemas import SRStatusEvent
+from querydesk.services.messaging import inbound, whatsapp
 from querydesk.services.notifications import notify
+from querydesk.services.retrieval import sparse
 
 logger = logging.getLogger(__name__)
 
@@ -82,3 +87,37 @@ def notify_status_change(event: dict) -> bool:
 def reconcile() -> int:
     # No retry: the next beat run covers the same window.
     return _run(notify.reconcile())
+
+
+@worker_process_init.connect
+def _warm_up(**_) -> None:
+    # With WhatsApp on, the worker runs the pipeline: load BM25 now rather
+    # than on a user's first message. (The solo pool loads it on first use.)
+    if not settings.whatsapp_enabled:
+        return
+    try:
+        _run(sparse.warm_up())
+    except Exception as e:
+        logger.error("BM25 model not loaded at worker start, will load on first use: %s", e)
+
+
+@app.task(name="querydesk.whatsapp_message")
+def whatsapp_message(phone: str, body: str, has_media: bool = False) -> None:
+    # No retry: running the pipeline again could advance a conversation
+    # twice. reply_to() turns a failure into a "try again" reply instead.
+    reply = _run(inbound.reply_to(phone, body, has_media))
+    if reply:
+        whatsapp_send.delay(phone, reply)
+
+
+@app.task(name="querydesk.whatsapp_send", bind=True, max_retries=5)
+def whatsapp_send(self, to: str, body: str) -> None:
+    try:
+        _run(whatsapp.send(to, body))
+    except WhatsAppError as e:
+        if not e.retryable:
+            # The provider refused this message (an invalid number, say):
+            # resending would fail the same way.
+            logger.error("WhatsApp message not sent: %s", e)
+            return
+        raise self.retry(exc=e, countdown=min(60, 2**self.request.retries)) from e
