@@ -392,8 +392,11 @@ Detail in [plan-day-8.md](plan-day-8.md).
   notification all work in compose. Deployment notes for the ticketing team are in
   [docker.md](docker.md).
 - [~] **O** WhatsApp chat through Meta's Cloud API or Twilio (`/webhooks/whatsapp`, migration 004): a
-  private one-to-one chat with the same pipeline, plus SR updates in the same thread. *Offline
-  tests pass; the live phone test needs a tunnel ([whatsapp.md](whatsapp.md)).*
+  private one-to-one chat with the same pipeline, plus SR updates in the same thread. *Live test on
+  2026-10-27 through Meta's test number and the ngrok tunnel: real phone messages arrive, pass
+  the signature check and get answered as a `wa-` user, and Meta accepts the reply. Delivery to
+  the phone is blocked by a Meta account lock (no payment method on the WhatsApp account yet).
+  Setup in [whatsapp.md](whatsapp.md).*
 - [ ] **T** Docker Compose for the full stack, Nginx, structured logs with a correlation id.
 
 ### Day 9 — demo scenarios · **Checkpoint 3**
@@ -410,6 +413,12 @@ Detail in [plan-day-8.md](plan-day-8.md).
   *Orchestrator README done (PR #17; ownership is credited by team). The demo video and smoke
   test need the deployed site.*
 - [ ] **T** EC2 t3.medium setup, Compose deploy, secrets, smoke test.
+
+## After v1
+
+- [ ] **O** Universal ticketing connector: one engine plus a YAML spec per platform, ServiceNow first,
+  then Jira Service Management ([plan-connectors.md](plan-connectors.md)). Starts after the Day 10
+  demo.
 
 ---
 
