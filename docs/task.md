@@ -394,9 +394,15 @@ Detail in [plan-day-8.md](plan-day-8.md).
 - [~] **O** WhatsApp chat through Meta's Cloud API or Twilio (`/webhooks/whatsapp`, migration 004): a
   private one-to-one chat with the same pipeline, plus SR updates in the same thread. *Live test on
   2026-10-27 through Meta's test number and the ngrok tunnel: real phone messages arrive, pass
-  the signature check and get answered as a `wa-` user, and Meta accepts the reply. Delivery to
-  the phone is blocked by a Meta account lock (no payment method on the WhatsApp account yet).
-  Setup in [whatsapp.md](whatsapp.md).*
+  the signature check and get answered as a `wa-` user, and Meta accepts the reply. By
+  2026-10-30 a card was on the account, the token was a permanent System User token and every
+  health check was AVAILABLE, but delivery still failed with 131031 (account locked): Meta has to
+  lift it (review or business verification). Setup and troubleshooting in
+  [whatsapp.md](whatsapp.md).*
+- [ ] **O** Keep phone numbers and secrets out of WhatsApp logs: hash the `wamid` in the delivery
+  warning (it is base64 of the recipient's number), and drop the query string from the access log
+  for `/webhooks/whatsapp` (it carries `META_VERIFY_TOKEN`). Add a test for each, then rotate the
+  verify token.
 - [ ] **T** Docker Compose for the full stack, Nginx, structured logs with a correlation id.
 
 ### Day 9 — demo scenarios · **Checkpoint 3**
@@ -409,6 +415,9 @@ Detail in [plan-day-8.md](plan-day-8.md).
 
 ### Day 10 — ship
 *Done when: v1.0 tagged and live.*
+- [x] **O** `v0.9.0` tagged as the pre-deploy baseline (feature-complete orchestrator, before the
+  EC2 deploy), so the deploy can always roll back to a known version. `v1.0` is for the live,
+  smoke-tested build.
 - [~] **O** READMEs crediting both teams, architecture diagram, demo video; smoke-test the live site.
   *Orchestrator README done (PR #17; ownership is credited by team). The demo video and smoke
   test need the deployed site.*

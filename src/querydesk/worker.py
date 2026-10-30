@@ -5,7 +5,7 @@ path (PRD architecture step 5).
   notify_status_change   one webhook event -> one notification (retried)
   reconcile              beat, every reconcile_interval_s: GET /sr?updated_since=
   whatsapp_message       one inbound WhatsApp message -> the pipeline -> a reply
-  whatsapp_send          one message out through Twilio (retried)
+  whatsapp_send          one message out through the WhatsApp provider (retried)
 
 The broker is the same Redis as the rest of the app (REDIS_URL). Results are
 not stored. Run in dev with the quiet flags, or an idle worker burns the
