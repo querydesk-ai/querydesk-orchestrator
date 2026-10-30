@@ -11,7 +11,7 @@ QueryDesk is two services, each owned by one team, behind one API contract:
 
 | Repo | What it does | Owner |
 | --- | --- | --- |
-| **querydesk-orchestrator** (this repo) | Chat API, hybrid retrieval and cited answers, category router, decision layer, slot filling, ticketing client, signed-webhook receiver, Celery notifications, chat page, eval tooling | Orchestrator team |
+| **querydesk-orchestrator** (this repo) | Chat API, hybrid retrieval and cited answers, category router, decision layer, slot filling, ticketing client, signed-webhook receiver, Celery notifications, decision logs, chat page, WhatsApp chat, Docker stack, eval tooling | Orchestrator team |
 | [querydesk-ticketing](https://github.com/querydesk-ai/querydesk-ticketing) | Spring Boot 3 / Java 21 SR service: status state machine, idempotent creation, webhook outbox with retries, UAT auto-revert | Ticketing team |
 | [querydesk-docs](https://github.com/querydesk-ai/querydesk-docs) | PRD, the OpenAPI contract (`openapi.yaml`), `categories.json`, the eval set | Both teams |
 
@@ -47,7 +47,10 @@ flowchart LR
     API -->|embed query, generate answer| FW[Fireworks<br/>qwen3-embedding-8b · minimax-m3]
     API -->|hybrid search, router| Q[(Qdrant Cloud<br/>kb_chunks · categories)]
     API -->|POST /sr + Idempotency-Key<br/>GET /sr| T[Ticketing service<br/>Spring Boot]
-    API -->|sr_requests| PG[(Neon Postgres<br/>sr_orchestrator)]
+    API -->|sr_requests, decision_logs| PG[(Neon Postgres<br/>sr_orchestrator)]
+    WA[WhatsApp user] -->|Meta Cloud API<br/>signed POST /webhooks/whatsapp| WWH[WhatsApp receiver]
+    WWH -->|enqueue| R
+    W -->|reply, SR updates| META[Meta Graph API] --> WA
     T -->|signed webhook<br/>POST /webhooks/sr-status| WH[Webhook receiver]
     WH -->|enqueue| R
     R -->|task| W[Celery worker]
@@ -71,7 +74,13 @@ flowchart LR
      - **ask for the missing fields**;
      - **escalate** to the service desk.
 4. **Status changes come back asynchronously.** Each one arrives as a signed webhook, a Celery
-   worker writes it once, and the chat page shows it.
+   worker writes it once, and the chat page shows it. A WhatsApp user also gets it in their chat.
+5. **Every decision is recorded.** It goes to one `querydesk.decision` log line and to a
+   `decision_logs` row in Postgres (PRD F10). The write runs in the background and never slows
+   the reply.
+
+WhatsApp messages take the same path: the worker runs the same `handle_message()` as `/chat`,
+under a `wa-` id derived from the number. The number itself never leaves `whatsapp_users`.
 
 Design details and the invariants that are easy to break are in [CLAUDE.md](CLAUDE.md). The
 reasoning behind each change is in the [eval reports](docs/) and the day plans.
@@ -151,7 +160,8 @@ The rules behind the decisions:
   (force approval or escalation).
 
 Other endpoints: `GET /health`, `GET /health/ready` (also pings Qdrant), `GET /notifications`,
-`POST /notifications/read`, `POST /webhooks/sr-status` (HMAC-signed, for the ticketing service).
+`POST /notifications/read`, `POST /webhooks/sr-status` (HMAC-signed, for the ticketing service),
+`GET`/`POST /webhooks/whatsapp` (Meta's verify check and signed messages).
 
 ## Run with Docker
 
@@ -184,8 +194,22 @@ proxy, and the env vars.
 Users can also chat with the bot on WhatsApp, through Meta's WhatsApp Cloud API (its free test
 number) or Twilio. Each user has a private one-to-one chat with the same answers, SRs and status
 questions as the chat page, and gets SR updates in the same chat. It is off unless the WhatsApp
-variables in `.env.example` are set. Setup, a local test with a tunnel, and the Sandbox limits are in
-[docs/whatsapp.md](docs/whatsapp.md).
+variables in `.env.example` are set.
+
+For a local test, `docker compose --profile stand-in --profile tunnel up -d` adds an ngrok tunnel
+for Meta's webhook. Setup, the Meta account checklist (a permanent token, a card on the account)
+and troubleshooting are in [docs/whatsapp.md](docs/whatsapp.md).
+
+**Status:** live-tested end to end up to Meta. Messages arrive, are verified and answered, and Meta
+accepts the reply. Delivery to the phone waits on Meta lifting an account lock on the test account.
+
+## Roadmap
+
+- **v1.0:** EC2 deploy behind the ticketing team's Nginx ([docs/task.md](docs/task.md), Day 10).
+  `v0.9.0` is the pre-deploy baseline.
+- **After v1:** a universal ticketing connector, so QueryDesk can front ServiceNow or Jira Service
+  Management through one engine plus a YAML spec per platform
+  ([docs/plan-connectors.md](docs/plan-connectors.md)).
 
 ## Tests
 
@@ -220,10 +244,10 @@ decision in the published report.
 ```
 src/querydesk/
   main.py                       # FastAPI app + lifespan (Qdrant check, BM25 warm-up)
-  worker.py                     # Celery app: notify task + reconcile beat job
+  worker.py                     # Celery app: notify, reconcile, WhatsApp message + send tasks
   core/config.py                # all settings — nothing else reads the environment
   core/errors.py                # UpstreamError family → HTTP 502
-  api/routes/                   # chat, health, notifications, webhooks
+  api/routes/                   # chat, health, notifications, webhooks, whatsapp
   static/index.html             # the one-file chat page
   models/schemas.py             # request/response shapes, Decision, ResolutionType
   eval/                         # eval-set schema, calibration, report rendering
@@ -241,9 +265,11 @@ src/querydesk/
     decision/                   # signals, field extraction, rule 6, the rule engine
     ticketing/client.py         # the only module that talks to the ticketing service
     notifications/              # HMAC signing, the idempotent status-change handler
+    messaging/                  # WhatsApp: identity, formatting, inbound, Meta and Twilio clients
     state/                      # Redis and Postgres access
 tests/                          # unit/, integration/, fakes/fake_ticketing.py
-migrations/                     # plain SQL, applied in order by scripts/migrate.py
+migrations/                     # plain SQL (001–004), applied in order by scripts/migrate.py
+Dockerfile, compose.yaml        # runtime + stand-in images; api, worker, beat, redis, tunnel
 data/                           # categories.json, decision_rules.json, kb/ (11 articles)
 eval/eval_set.jsonl             # 94 labelled messages
 docs/                           # task board, day plans, eval reports, design notes
