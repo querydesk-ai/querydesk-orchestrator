@@ -31,14 +31,7 @@ The package uses a `src/` layout (`src/querydesk`) and is managed with **uv**: `
 `pythonpath = ["src"]`, so tests import the package without an install.
 
 ```bash
-uv sync                                     # install / update .venv from uv.lock
-uv add <pkg>  /  uv add --dev <pkg>         # add a dependency (updates pyproject + uv.lock)
-
 uv run pytest -q                            # full suite; offline, no API key
-uv run pytest tests/unit/test_chunking.py -q
-uv run pytest tests/unit/test_rag.py::test_no_hits_escalates_without_calling_the_llm -q
-uv run ruff check . --fix                   # lint (CI runs it)
-uv run ruff format .                        # format (CI runs `ruff format --check`)
 
 uv run scripts/check_services.py            # Qdrant / Redis / Postgres reachability
 uv run scripts/migrate.py                   # apply migrations/*.sql to Neon (--status to list)
