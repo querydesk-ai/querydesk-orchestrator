@@ -8,9 +8,8 @@ and dependency failures to 502.
 
 from dataclasses import asdict
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
-from querydesk.core.errors import UpstreamError
 from querydesk.models.schemas import ChatRequest, ChatResponse
 from querydesk.services import pipeline
 
@@ -19,12 +18,6 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 @router.post("", response_model=ChatResponse)
 async def chat(req: ChatRequest) -> ChatResponse:
-    try:
-        result = await pipeline.handle_message(req.user_id, req.query)
-    except UpstreamError as e:
-        # Any dependency failure (Fireworks, Qdrant, ticketing) is a 502: the
-        # request was fine, something behind us wasn't. Catching the family
-        # means a new dependency needs no change here.
-        raise HTTPException(status_code=502, detail=str(e)) from e
-
+    # An UpstreamError propagates to the app-level handler in main.py (logged, 502).
+    result = await pipeline.handle_message(req.user_id, req.query)
     return ChatResponse(**asdict(result))

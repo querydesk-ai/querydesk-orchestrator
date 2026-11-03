@@ -3,11 +3,11 @@ from contextlib import asynccontextmanager
 from importlib.metadata import version
 from pathlib import Path
 
-from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse, JSONResponse
 
 from querydesk.api.routes import chat, health, notifications, webhooks, whatsapp
-from querydesk.core.errors import VectorStoreError
+from querydesk.core.errors import UpstreamError, VectorStoreError
 from querydesk.services import pipeline
 from querydesk.services.retrieval import sparse
 from querydesk.services.retrieval.qdrant_store import ensure_collections
@@ -27,6 +27,24 @@ if not _app_log.handlers:
     _handler.setFormatter(logging.Formatter("%(levelname)s %(name)s %(message)s"))
     _app_log.addHandler(_handler)
     _app_log.setLevel(logging.INFO)
+
+
+class _RedactQueryString(logging.Filter):
+    """
+    Blank the query string in uvicorn's access line. Meta's webhook check puts
+    META_VERIFY_TOKEN in it (GET /webhooks/whatsapp?hub.verify_token=…).
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple) and len(record.args) >= 3:
+            args = list(record.args)
+            if isinstance(args[2], str) and "?" in args[2]:
+                args[2] = args[2].split("?", 1)[0] + "?[redacted]"
+                record.args = tuple(args)
+        return True
+
+
+logging.getLogger("uvicorn.access").addFilter(_RedactQueryString())
 
 
 @asynccontextmanager
@@ -64,6 +82,19 @@ app = FastAPI(
     version=version("querydesk-orchestrator"),
     lifespan=lifespan,
 )
+
+
+@app.exception_handler(UpstreamError)
+async def upstream_error(request: Request, exc: UpstreamError) -> JSONResponse:
+    # Any dependency failure (Fireworks, Qdrant, ticketing, Postgres) is a 502:
+    # the request was fine, something behind us wasn't. Catching the family means
+    # a new dependency needs no change here. The cause goes to the log; the
+    # client gets no upstream text.
+    logger.error(
+        "Upstream failure on %s %s: %s", request.method, request.url.path, exc, exc_info=exc
+    )
+    return JSONResponse(status_code=502, content={"detail": "A dependency failed"})
+
 
 app.include_router(health.router)
 app.include_router(chat.router)

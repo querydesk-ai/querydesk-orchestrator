@@ -6,10 +6,14 @@ Split because they answer different questions: /health says the process is up
 (used by a load balancer before sending traffic).
 """
 
+import logging
+
 from fastapi import APIRouter, HTTPException
 
 from querydesk.core.errors import VectorStoreError
 from querydesk.services.retrieval import qdrant_store
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["health"])
 
@@ -26,5 +30,6 @@ async def health_ready():
     try:
         await qdrant_store.ping()
     except VectorStoreError as e:
+        logger.warning("Readiness check failed: %s", e)
         raise HTTPException(status_code=503, detail=str(e)) from e
     return {"status": "ready", "qdrant": "ok"}

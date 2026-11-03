@@ -225,7 +225,7 @@ def test_meta_receipts_are_ignored_and_failures_reported():
     messages, failures = meta.parse(payload)
 
     assert messages == []
-    assert failures == ["message wamid.10 failed: 131047 Re-engagement message"]
+    assert failures == ["message failed: 131047 Re-engagement message"]
 
 
 def test_meta_parse_survives_odd_payloads():

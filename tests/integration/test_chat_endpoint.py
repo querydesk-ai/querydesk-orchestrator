@@ -133,6 +133,23 @@ async def test_upstream_failures_map_to_502(monkeypatch, client, error):
 
 
 @pytest.mark.anyio
+async def test_a_502_is_logged_with_its_cause_but_not_shown_to_the_client(
+    monkeypatch, client, caplog
+):
+    _patch(monkeypatch, error=FireworksError("secret upstream body"))
+
+    with caplog.at_level("ERROR", logger="querydesk"):
+        async with client as c:
+            resp = await c.post("/chat", json={"user_id": "u1", "query": "anything"})
+
+    assert resp.status_code == 502
+    assert "secret upstream body" not in resp.text
+    [record] = [r for r in caplog.records if "Upstream failure" in r.getMessage()]
+    assert "secret upstream body" in record.getMessage()
+    assert record.exc_info is not None
+
+
+@pytest.mark.anyio
 async def test_missing_required_field_is_a_422(client):
     async with client as c:
         resp = await c.post("/chat", json={"query": "no user id"})

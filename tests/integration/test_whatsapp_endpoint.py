@@ -159,6 +159,24 @@ async def test_a_meta_broker_failure_is_503_and_lets_the_redelivery_through(meta
 
 
 @pytest.mark.anyio
+async def test_logs_never_carry_the_wamid(meta_on, monkeypatch, caplog):
+    def broken(*args):
+        raise ConnectionError("broker down")
+
+    monkeypatch.setattr(route, "_enqueue", broken)
+    wamid = "wamid.HBgLMTU1NTEyMzQ1Njc"
+    with caplog.at_level("INFO", logger="querydesk"):
+        await _post_meta(_meta_payload(_text(wamid)))  # enqueue fails -> error log
+        monkeypatch.setattr(route, "_enqueue", lambda *args: None)
+        await _post_meta(_meta_payload(_text(wamid)))  # accepted
+        await _post_meta(_meta_payload(_text(wamid)))  # duplicate -> info log
+
+    assert caplog.records
+    assert wamid not in caplog.text
+    assert PHONE[1:] not in caplog.text
+
+
+@pytest.mark.anyio
 async def test_no_broker_is_503(meta_on, queued, monkeypatch):
     monkeypatch.setattr(settings, "redis_url", "")
 

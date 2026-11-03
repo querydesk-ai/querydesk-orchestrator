@@ -7,9 +7,8 @@ user_id is a parameter, exactly as on POST /chat. Marking read is scoped to
 that user_id, so it can't touch anyone else's notifications.
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
-from querydesk.core.errors import UpstreamError
 from querydesk.models.schemas import MarkReadRequest, MarkReadResponse, Notification
 from querydesk.services.state import postgres_store
 
@@ -22,19 +21,12 @@ async def list_notifications(
     unread_only: bool = False,
     limit: int = Query(default=20, ge=1, le=100),
 ) -> list[Notification]:
-    try:
-        rows = await postgres_store.list_notifications(
-            user_id, unread_only=unread_only, limit=limit
-        )
-    except UpstreamError as e:
-        raise HTTPException(status_code=502, detail=str(e)) from e
+    # An UpstreamError propagates to the app-level handler in main.py (logged, 502).
+    rows = await postgres_store.list_notifications(user_id, unread_only=unread_only, limit=limit)
     return [Notification(**r) for r in rows]
 
 
 @router.post("/read", response_model=MarkReadResponse)
 async def mark_read(req: MarkReadRequest) -> MarkReadResponse:
-    try:
-        marked = await postgres_store.mark_read(req.user_id, req.ids)
-    except UpstreamError as e:
-        raise HTTPException(status_code=502, detail=str(e)) from e
+    marked = await postgres_store.mark_read(req.user_id, req.ids)
     return MarkReadResponse(marked=marked)

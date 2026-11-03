@@ -12,6 +12,7 @@ redelivers it) rather than losing it silently.
 GET is Meta's one-off check when the webhook URL is saved in the app.
 """
 
+import hashlib
 import json
 import logging
 
@@ -33,6 +34,11 @@ EMPTY_TWIML = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>'
 SEEN_TTL_S = 24 * 3600
 
 
+def _ref(message_id: str) -> str:
+    """A log-safe reference: a Meta wamid embeds the sender's number, so never log it."""
+    return hashlib.sha256(message_id.encode("utf-8")).hexdigest()[:10]
+
+
 def _enqueue(phone: str, body: str, has_media: bool) -> None:
     # Imported here so the API process only loads Celery when a message arrives.
     from querydesk.worker import whatsapp_message
@@ -52,22 +58,26 @@ async def _accept(message_id: str, phone: str, body: str, has_media: bool) -> No
     seen_key = f"wa:msg:{message_id}"
     try:
         if not await redis_store.set_if_absent(seen_key, SEEN_TTL_S):
-            logger.info("WhatsApp message %s already handled", message_id)
+            logger.info("WhatsApp message %s already handled", _ref(message_id))
             return
     except RedisStoreError as e:
-        logger.error("WhatsApp dedupe unavailable for %s: %s", message_id, e)
+        logger.error("WhatsApp dedupe unavailable for %s: %s", _ref(message_id), e)
         raise HTTPException(status_code=503, detail="Could not queue the message") from e
 
     try:
         # .delay() is a blocking publish; keep it off the event loop.
         await anyio.to_thread.run_sync(_enqueue, phone, body, has_media)
     except Exception as e:  # kombu/redis raise several unrelated types
-        logger.error("Could not enqueue WhatsApp message %s: %s", message_id, e)
+        logger.error(
+            "Could not enqueue WhatsApp message %s: %s", _ref(message_id), e, exc_info=True
+        )
         try:
             # Not queued, so not handled: let a redelivery through.
             await redis_store.delete(seen_key)
         except RedisStoreError:
-            pass
+            logger.warning(
+                "Could not clear dedupe key for %s; a redelivery will be dropped", _ref(message_id)
+            )
         raise HTTPException(status_code=503, detail="Could not queue the message") from e
 
 
