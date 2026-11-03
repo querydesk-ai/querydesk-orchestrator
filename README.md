@@ -189,6 +189,16 @@ docker compose --profile stand-in up --build          # chat page at http://loca
 The ticketing team's deployment notes are in [docs/docker.md](docs/docker.md): which port to
 proxy, and the env vars.
 
+## Deploy to AWS
+
+`compose.prod.yaml` and the `Caddyfile` run the same stack on one EC2 box with automatic HTTPS
+from Caddy and a free DuckDNS name, using AWS credits only. The runbook, with the credit and
+budget checks and the teardown checklist, is [docs/aws-deploy.md](docs/aws-deploy.md).
+
+**Status:** the box has been torn down and its Elastic IP released, which cannot be undone. To
+redeploy, allocate a new Elastic IP, point the DuckDNS A record at it **before** starting Caddy,
+and update any Neon or Qdrant IP allowlist; see "Redeploy after teardown" in the runbook.
+
 ## WhatsApp
 
 Users can also chat with the bot on WhatsApp, through Meta's WhatsApp Cloud API (its free test
@@ -201,11 +211,18 @@ for Meta's webhook. Setup, the Meta account checklist (a permanent token, a card
 and troubleshooting are in [docs/whatsapp.md](docs/whatsapp.md).
 
 **Status:** live-tested end to end up to Meta. Messages arrive, are verified and answered, and Meta
-accepts the reply. Delivery to the phone waits on Meta lifting an account lock on the test account.
+accepts the reply. Delivery to the phone is blocked on Meta's side: the WhatsApp Business Account
+is restricted ("Before you can begin messaging, you will need to verify your business"), and
+Meta then reports `131031 Business Account locked` for each reply. Verification needs business
+documents (GST number, legal documents), which this learning project doesn't have, so the lock
+won't clear on its own. The Twilio sandbox was tried and did not work for custom replies. The chat
+page runs the same pipeline and is not affected.
 
 ## Roadmap
 
-- **v1.0:** EC2 deploy behind the ticketing team's Nginx ([docs/task.md](docs/task.md), Day 10).
+- **v1.0:** deploy ([docs/task.md](docs/task.md), Day 10). The orchestrator-only AWS box with
+  Caddy and DuckDNS is built and documented ([docs/aws-deploy.md](docs/aws-deploy.md)) but is
+  currently torn down. Putting it behind the ticketing team's Nginx instead is still open.
   `v0.9.0` is the pre-deploy baseline.
 - **After v1:** a universal ticketing connector, so QueryDesk can front ServiceNow or Jira Service
   Management through one engine plus a YAML spec per platform
@@ -270,6 +287,7 @@ src/querydesk/
 tests/                          # unit/, integration/, fakes/fake_ticketing.py
 migrations/                     # plain SQL (001–004), applied in order by scripts/migrate.py
 Dockerfile, compose.yaml        # runtime + stand-in images; api, worker, beat, redis, tunnel
+compose.prod.yaml, Caddyfile    # AWS single-box overlay: Caddy HTTPS in front of the api
 data/                           # categories.json, decision_rules.json, kb/ (11 articles)
 eval/eval_set.jsonl             # 94 labelled messages
 docs/                           # task board, day plans, eval reports, design notes

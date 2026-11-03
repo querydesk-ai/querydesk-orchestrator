@@ -19,7 +19,9 @@ This deployment is meant to run entirely on AWS credits.
 - Use only one EC2 t3.medium, one gp3 volume and one Elastic IP. Don't add a NAT Gateway, load
   balancer, RDS, Route 53 domain or Marketplace AMI.
 - **Stop the instance when you don't need it.** A stopped instance still bills its disk and Elastic IP.
-- Teardown: terminate the instance, release the Elastic IP, delete the volume and snapshots.
+- Teardown: terminate the instance, release the Elastic IP, delete the volume and snapshots. A
+  released Elastic IP is gone for good; redeploying later needs a new one (see
+  [Redeploy after teardown](#redeploy-after-teardown)).
 
 ## 1. Account safety (once)
 
@@ -91,6 +93,20 @@ The knowledge base is already indexed in Qdrant Cloud; don't run `ingest.py` unl
 
 Set Meta's webhook callback to `https://<name>.duckdns.org/webhooks/whatsapp` with
 `META_VERIFY_TOKEN`; see [whatsapp.md](whatsapp.md).
+
+## Redeploy after teardown
+
+Once the Elastic IP is released it cannot be recovered, so every address that pointed at it is stale.
+Do these in order:
+
+1. Allocate a **new Elastic IP** and associate it with the instance after starting it (or with a
+   new instance, section 2).
+2. Update the **DuckDNS A record** to the new IP, and confirm `nslookup <name>.duckdns.org` returns
+   it. Do this **before** (re)starting Caddy, or it fails to get its HTTPS certificate.
+3. Replace the old IP in any Neon or Qdrant **allowlist** (section 5).
+4. Start the stack (section 6; `dc restart caddy` if it was already running), then run section 7.
+5. Meta's webhook callback uses the DuckDNS name, so it only needs a re-check if the name changed
+   (section 8).
 
 ## Operate
 
