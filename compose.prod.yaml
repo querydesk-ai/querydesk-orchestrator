@@ -1,0 +1,62 @@
+# Production override for the single EC2 box (docs/aws-deploy.md). Use it on top
+# of compose.yaml:
+#
+#   docker compose -f compose.yaml -f compose.prod.yaml --profile stand-in up -d --build
+#
+# Only Caddy is reachable from outside (80/443). The api, the stand-in and Redis
+# stay on the compose network. Needs Docker Compose >= 2.24 for `!reset`.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  caddy:
+    image: caddy:2
+    # DOMAIN comes from .env (e.g. querydesk-name.duckdns.org).
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data   # issued certificates: keep, or Let's Encrypt rate-limits you
+      - caddy_config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - api
+    mem_limit: 128m
+    logging: *logging
+    restart: unless-stopped
+
+  api:
+    ports: !reset []
+    environment:
+      # Port 8000 is not published, so only Caddy can reach uvicorn: trust its
+      # X-Forwarded-* headers (docs/docker.md).
+      FORWARDED_ALLOW_IPS: "*"
+    mem_limit: 768m
+    logging: *logging
+
+  worker:
+    mem_limit: 768m
+    logging: *logging
+
+  beat:
+    mem_limit: 256m
+    logging: *logging
+
+  redis:
+    mem_limit: 128m
+    logging: *logging
+
+  ticketing:
+    ports: !reset []
+    mem_limit: 256m
+    logging: *logging
+
+volumes:
+  caddy_data:
+  caddy_config:

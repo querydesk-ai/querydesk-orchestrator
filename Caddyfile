@@ -1,0 +1,14 @@
+# Reverse proxy + automatic HTTPS (Let's Encrypt). Used by compose.prod.yaml.
+# Needs DNS for {$DOMAIN} to point at this box, and ports 80/443 open.
+{$DOMAIN} {
+	# Swagger is for developers, not the public site.
+	@internal path /docs* /redoc* /openapi.json
+	respond @internal 404
+
+	# A chat answer takes 5-8 s; allow generous headroom.
+	reverse_proxy api:8000 {
+		transport http {
+			response_header_timeout 60s
+		}
+	}
+}
