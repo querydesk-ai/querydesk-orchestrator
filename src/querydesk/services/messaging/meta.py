@@ -79,7 +79,8 @@ def parse(payload: dict) -> tuple[list[Inbound], list[str]]:
                     codes = ", ".join(
                         f"{e.get('code')} {e.get('title', '')}".strip() for e in errors
                     )
-                    failures.append(f"message {s.get('id')} failed: {codes}")
+                    # Not the message id: a wamid is base64 and embeds the recipient's number.
+                    failures.append(f"message failed: {codes}")
     return messages, failures
 
 

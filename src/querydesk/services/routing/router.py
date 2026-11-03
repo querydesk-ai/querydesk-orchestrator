@@ -114,9 +114,10 @@ async def tie_break(query: str, candidates: list[CategoryHit]) -> str | None:
             ],
             temperature=0.0,
         )
-    except FireworksError:
+    except FireworksError as e:
         # A degraded tie-break must not fail the whole message: escalating to
         # a person is a safe answer, a 502 is not.
+        log.warning("Router tie-break failed, treating as not confident: %s", e)
         return None
 
     choice = reply.strip().strip("`'\".").lower()

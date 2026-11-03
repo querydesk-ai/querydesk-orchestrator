@@ -61,7 +61,7 @@ async def chat_completion(
             f"{FIREWORKS_BASE_URL}/chat/completions", json=payload, headers=headers
         )
     if resp.status_code != 200:
-        raise FireworksError(f"Fireworks chat call failed: {resp.status_code} {resp.text}")
+        raise FireworksError(f"Fireworks chat call failed: {resp.status_code} {resp.text[:300]}")
 
     try:
         choice = resp.json()["choices"][0]
@@ -120,7 +120,7 @@ async def embed_text(texts: list[str], model: str | None = None) -> list[list[fl
                 # not actionable but "items 64-95 failed" is.
                 raise FireworksError(
                     f"Fireworks embed call failed for items "
-                    f"{start}-{start + len(batch) - 1}: {resp.status_code} {resp.text}"
+                    f"{start}-{start + len(batch) - 1}: {resp.status_code} {resp.text[:300]}"
                 )
             try:
                 # Fireworks returns results in the same order as input.
