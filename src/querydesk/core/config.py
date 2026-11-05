@@ -85,6 +85,18 @@ class Settings(BaseSettings):
     conversation_ttl_s: int = 30 * 60
     conversation_max_follow_ups: int = 2
 
+    # --- Chat history ------------------------------------------------------
+    # The last few exchanges per user (history:{user_id} in Redis) so the chat
+    # page can reload them and a follow-up like "and for prod?" can be read in
+    # context. It holds user text, so it expires on its own.
+    history_turns: int = 6
+    history_ttl_s: int = 24 * 3600
+    # Rewrite a follow-up that leans on earlier turns into a standalone
+    # question for search (one extra LLM call, only when the message has a
+    # reference word). Off until the eval shows it doesn't hurt routing.
+    history_rewrite_enabled: bool = False
+    history_rewrite_timeout_s: float = 8.0
+
     # --- Generation ------------------------------------------------------
     # Every chat model on the account is a reasoning model: hidden reasoning
     # tokens are drawn from the same budget as the answer, so a budget that

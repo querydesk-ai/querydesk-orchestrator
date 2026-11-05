@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 
-from querydesk.api.routes import chat, health, notifications, webhooks, whatsapp
+from querydesk.api.routes import chat, health, history, notifications, webhooks, whatsapp
 from querydesk.core.errors import UpstreamError, VectorStoreError
 from querydesk.services import pipeline
 from querydesk.services.retrieval import sparse
@@ -98,6 +98,7 @@ async def upstream_error(request: Request, exc: UpstreamError) -> JSONResponse:
 
 app.include_router(health.router)
 app.include_router(chat.router)
+app.include_router(history.router)
 app.include_router(webhooks.router)
 app.include_router(whatsapp.router)
 app.include_router(notifications.router)

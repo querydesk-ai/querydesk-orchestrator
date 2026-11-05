@@ -2,7 +2,8 @@
 Slot-filling state: one open conversation per user, conversation:{user_id}
 in Redis with a TTL (PRD F4, docs/plan-day-6.md).
 
-A conversation exists only while an SR is waiting for required fields. It is
+A conversation exists only while an SR is waiting for required fields or for
+the user's confirmation to raise it. It is
 a convenience, not a record: if Redis is down or unconfigured, every function
 here degrades (load -> None, save/clear -> no-op) with a warning, so /chat
 falls back to single-turn behaviour instead of failing.
@@ -29,6 +30,13 @@ class Conversation:
     turns: list[str] = field(default_factory=list)
     follow_ups: int = 0
     retrieval_confidence: float | None = None
+    # "collect": waiting for fields. "confirm": complete, waiting for the
+    # user's yes before the SR is raised. Absent in state saved before this
+    # existed, which is always "collect".
+    stage: str = "collect"
+
+    def transcript_so_far(self) -> str:
+        return "\n".join([self.original_query, *self.turns])
 
     def transcript(self, latest: str) -> str:
         return "\n".join([self.original_query, *self.turns, latest])

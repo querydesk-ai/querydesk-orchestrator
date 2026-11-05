@@ -91,6 +91,8 @@
   userInput.addEventListener("change", () => {
     store.set(userInput.value.trim());
     shown.clear();
+    log.querySelectorAll(".msg").forEach((m) => m.remove());
+    loadHistory();
     poll();
   });
 
@@ -198,6 +200,33 @@
     }
   }
 
+  // Show the recent chat again after a reload. Best effort: without it the
+  // page simply starts empty.
+  async function loadHistory() {
+    const user = userInput.value.trim();
+    if (!user) return;
+    try {
+      const resp = await fetch("/history?user_id=" + encodeURIComponent(user));
+      if (!resp.ok) return;
+      for (const t of await resp.json()) {
+        if (t.role === "user") {
+          bubble("user", t.text);
+        } else {
+          const el = bubble("bot", t.text);
+          if (t.decision) {
+            const meta = document.createElement("div");
+            meta.className = "meta";
+            badge(meta, t.decision.replaceAll("_", " ").toLowerCase());
+            el.appendChild(meta);
+          }
+        }
+      }
+    } catch {
+      // Nothing to restore.
+    }
+  }
+
+  loadHistory();
   poll();
   setInterval(poll, POLL_MS);
 })();

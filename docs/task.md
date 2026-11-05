@@ -57,6 +57,13 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
 - **Known limitation for the Day 9 report:** first-time-message answer path p95 is above 3 s on
   qwen3 (embed ~2.4 s); mitigated by the Redis query cache. The BM25 model now loads at startup,
   so the first `/chat` after a boot no longer pays ~1.6 s for it.
+- **Small talk, SR confirmation and chat history (2026-11-05, uncommitted until its PR):**
+  - Greetings, thanks and "what can you do?" get a fixed reply with no embedding, search or LLM call.
+  - An SR is never raised on the message that completes it: the user sees the details and must say
+    yes (`CONFIRM_SR`).
+  - `GET /history` serves the last exchanges from Redis; the optional query rewrite
+    (`history_rewrite_enabled`) is off until `eval_run.py` shows routing unchanged.
+  - 601 offline tests pass; the eval was not re-run (the engine is unchanged).
 - **Next up:** contract v1.1, then the Day 9 demo scenarios.
 - **Repo housekeeping (checked 2026-10-17):**
   - "Automatically delete head branches" is still **off**. Ten merged branches remain on GitHub

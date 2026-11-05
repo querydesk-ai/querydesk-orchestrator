@@ -40,6 +40,8 @@ def no_query_cache(monkeypatch):
     monkeypatch.setattr(settings, "query_cache_enabled", False)
     monkeypatch.setattr(settings, "redis_url", "")
     monkeypatch.setattr(settings, "postgres_dsn", "")
+    # No LLM rewrite of follow-ups unless a test asks for it.
+    monkeypatch.setattr(settings, "history_rewrite_enabled", False)
     # Status webhooks: a known secret, and the stand-in never posts anywhere
     # unless a test hands it a target.
     monkeypatch.setattr(settings, "webhook_secret", "test-secret")
