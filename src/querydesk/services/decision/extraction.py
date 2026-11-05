@@ -176,11 +176,14 @@ async def extract_follow_up(
     returned too; the caller decides how to merge. `missing` on the result is
     relative to the reply alone.
     """
+    if not category.required_fields:
+        return Extraction()
     prompt = FOLLOW_UP_PROMPT.format(
         category_name=category.name,
         original_query=original_query,
         collected=json.dumps(collected) if collected else "nothing yet",
-        asked_for=", ".join(missing),
+        # Empty while the user is confirming: a reply can only correct a detail.
+        asked_for=", ".join(missing) or "nothing more (the user may be correcting a detail)",
         reply=reply,
         field_list=_field_list(category),
     )

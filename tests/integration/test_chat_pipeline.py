@@ -137,6 +137,13 @@ async def _chat(query, user_id="u1"):
         return await c.post("/chat", json={"user_id": user_id, "query": query})
 
 
+async def _raise(query, user_id="u1"):
+    """An action is held for confirmation, nothing raised; the yes raises it. Returns the yes."""
+    held = (await _chat(query, user_id)).json()
+    assert held["decision"] == "CONFIRM_SR" and held["sr_id"] is None
+    return (await _chat("yes", user_id)).json()
+
+
 async def _srs(world):
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=world.service), base_url="http://ticketing.test"
@@ -148,8 +155,28 @@ async def _srs(world):
 
 
 @pytest.mark.anyio
-async def test_action_raises_a_real_sr(world):
+async def test_action_asks_for_confirmation_before_raising(world):
     resp = await _chat("restart the claims app in UAT, it's hung")
+
+    body = resp.json()
+    assert resp.status_code == 200
+    assert body["decision"] == "CONFIRM_SR"
+    assert body["resolution_type"] == "AUTO_SR"
+    assert body["category_id"] == "it_application_restart"
+    assert body["sr_id"] is None
+    assert "application: claims" in body["reply"] and "environment: UAT" in body["reply"]
+    assert body["reply"].rstrip().endswith('or "no" to cancel.')
+    assert await _srs(world) == [] and world.rows == []
+    conv = await conversation.load("u1")
+    assert conv.stage == "confirm"
+    assert conv.fields == {"application": "claims", "environment": "UAT"}
+
+
+@pytest.mark.anyio
+async def test_a_yes_raises_the_sr_once(world):
+    await _chat("restart the claims app in UAT, it's hung")
+
+    resp = await _chat("yes")
 
     body = resp.json()
     assert resp.status_code == 200
@@ -164,12 +191,62 @@ async def test_action_raises_a_real_sr(world):
     assert sr["metadata"] == {"application": "claims", "environment": "UAT"}
     assert sr["description"] == "restart the claims app in UAT, it's hung"
     assert world.answer_calls == []  # an action is never answered with an article
+    assert await conversation.load("u1") is None
+
+    # A second yes has nothing to confirm: no second SR.
+    again = (await _chat("yes")).json()
+    assert again["decision"] == "SMALLTALK"
+    assert len(await _srs(world)) == 1
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("no", ["no", "nope", "cancel", "never mind"])
+async def test_a_no_cancels_without_raising(world, no):
+    await _chat("restart the claims app in UAT, it's hung")
+
+    body = (await _chat(no)).json()
+
+    assert body["decision"] == "CANCELLED"
+    assert body["reply"] == pipeline.CANCELLED_REPLY
+    assert await _srs(world) == [] and world.rows == []
+    assert await conversation.load("u1") is None
+
+
+@pytest.mark.anyio
+async def test_correcting_a_detail_re_confirms_with_the_new_value(world):
+    world.extraction_reply = [
+        '{"application": "claims", "environment": "UAT"}',
+        '{"application": null, "environment": "SIT"}',
+    ]
+    await _chat("restart the claims app in UAT, it's hung")
+
+    changed = (await _chat("actually make that SIT")).json()
+
+    assert changed["decision"] == "CONFIRM_SR"
+    assert "environment: SIT" in changed["reply"]
+    assert await _srs(world) == []
+    raised = (await _chat("yes")).json()
+    [sr] = await _srs(world)
+    assert raised["decision"] == "RAISE_SR"
+    assert sr["metadata"] == {"application": "claims", "environment": "SIT"}
+
+
+@pytest.mark.anyio
+async def test_a_new_question_instead_of_a_yes_drops_the_pending_sr(world):
+    await _chat("restart the claims app in UAT, it's hung")
+    world.dense_score = 0.77
+
+    body = (await _chat("does a rolling restart cause downtime?")).json()
+
+    assert body["decision"] == "ANSWER"
+    assert await conversation.load("u1") is None
+    assert await _srs(world) == []
 
 
 @pytest.mark.anyio
 async def test_resending_the_same_message_returns_the_same_sr(world):
     """Stand-in Checkpoint 1: idempotency end to end."""
-    first = (await _chat("restart the claims app in UAT, it's hung")).json()
+    first = await _raise("restart the claims app in UAT, it's hung")
     again = (await _chat("restart the claims app in UAT, it's hung")).json()
 
     assert again["sr_id"] == first["sr_id"]
@@ -190,10 +267,10 @@ async def _move(world, sr_id, *statuses):
 @pytest.mark.anyio
 async def test_asking_again_after_the_sr_is_resolved_raises_a_new_sr_the_same_day(world):
     """A closed SR doesn't swallow a repeat: the new key is chained off its SR number."""
-    first = (await _chat("restart the claims app in UAT, it's hung")).json()
+    first = await _raise("restart the claims app in UAT, it's hung")
     await _move(world, first["sr_id"], "IN_PROGRESS", "RESOLVED")
 
-    reopened = (await _chat("restart the claims app in UAT, it's hung")).json()
+    reopened = await _raise("restart the claims app in UAT, it's hung")
     resent = (await _chat("restart the claims app in UAT, it's hung")).json()
 
     assert reopened["sr_id"] != first["sr_id"]
@@ -204,8 +281,8 @@ async def test_asking_again_after_the_sr_is_resolved_raises_a_new_sr_the_same_da
 
 @pytest.mark.anyio
 async def test_another_user_gets_their_own_sr(world):
-    first = (await _chat("restart the claims app in UAT", user_id="u1")).json()
-    other = (await _chat("restart the claims app in UAT", user_id="u2")).json()
+    first = await _raise("restart the claims app in UAT", user_id="u1")
+    other = await _raise("restart the claims app in UAT", user_id="u2")
 
     assert first["sr_id"] != other["sr_id"]
 
@@ -214,7 +291,11 @@ async def test_another_user_gets_their_own_sr(world):
 async def test_production_restart_requires_approval(world):
     world.extraction_reply = '{"application": "agent-portal", "environment": "prod"}'
 
-    body = (await _chat("please bounce agent-portal in prod")).json()
+    held = (await _chat("please bounce agent-portal in prod")).json()
+    assert held["decision"] == "CONFIRM_SR" and held["requires_approval"] is True
+    assert "need approval" in held["reply"]
+
+    body = (await _chat("yes")).json()
 
     assert body["decision"] == "RAISE_SR"
     assert body["requires_approval"] is True
@@ -323,7 +404,7 @@ async def test_out_of_scope_escalates_with_no_llm_call_at_all(world):
 
 @pytest.mark.anyio
 async def test_status_question_lists_open_srs_without_a_search(world):
-    raised = (await _chat("restart the claims app in UAT, it's hung")).json()
+    raised = await _raise("restart the claims app in UAT, it's hung")
     world.embed_calls.clear()
     world.extraction_calls.clear()
     world.search_calls = 0
@@ -340,7 +421,7 @@ async def test_status_question_lists_open_srs_without_a_search(world):
 
 @pytest.mark.anyio
 async def test_status_of_someone_elses_sr_is_not_found(world):
-    raised = (await _chat("restart the claims app in UAT, it's hung", user_id="u2")).json()
+    raised = await _raise("restart the claims app in UAT, it's hung", user_id="u2")
 
     body = (await _chat(f"any update on SR-{raised['sr_id']}?")).json()
 
@@ -355,13 +436,16 @@ async def test_status_of_someone_elses_sr_is_not_found(world):
 async def test_every_message_logs_one_structured_decision(world, caplog):
     with caplog.at_level(logging.INFO, logger="querydesk.decision"):
         await _chat("restart the claims app in UAT, it's hung")
+        await _chat("yes")
 
-    [record] = [r for r in caplog.records if r.name == "querydesk.decision"]
-    entry = json.loads(record.getMessage())
-    assert entry["decision"] == "RAISE_SR"
+    entries = [json.loads(r.getMessage()) for r in caplog.records if r.name == "querydesk.decision"]
+    entry, confirmed = entries
+    assert entry["decision"] == "CONFIRM_SR"
     assert entry["rule"] == 4
     assert entry["engine"] == "rules"
-    assert entry["sr_id"] == "1001"
+    assert entry["sr_id"] is None
+    assert (confirmed["decision"], confirmed["sr_id"], confirmed["turn"]) == ("RAISE_SR", "1001", 1)
+    assert confirmed["overrides"] == ["confirmed"]
     assert entry["router_top_two"][0][0] == "it_application_restart"
     assert entry["intent"] == {"is_action": True, "is_status": False}
     assert set(entry["latency_ms"]) >= {"embed", "search", "decide", "extraction", "total"}
@@ -374,14 +458,17 @@ async def test_a_failed_sr_creation_still_logs_its_decision(world, monkeypatch, 
     def unreachable():
         raise tk.TicketingError("Ticketing service unreachable")
 
+    await _chat("restart the claims app in UAT, it's hung")
     monkeypatch.setattr(tk, "_make_client", unreachable)
+    monkeypatch.setattr(tk, "_client", None)  # the shared client is built lazily
 
     with caplog.at_level(logging.INFO, logger="querydesk.decision"):
-        resp = await _chat("restart the claims app in UAT, it's hung")
+        resp = await _chat("yes")
 
     assert resp.status_code == 502
-    [record] = [r for r in caplog.records if r.name == "querydesk.decision"]
-    entry = json.loads(record.getMessage())
+    entry = json.loads(
+        [r for r in caplog.records if r.name == "querydesk.decision"][-1].getMessage()
+    )
     assert entry["decision"] == "RAISE_SR"
     assert entry["category_id"] == "it_application_restart"
     assert entry["error"] == "TicketingError"
@@ -404,9 +491,11 @@ def decision_rows(world, monkeypatch):
 
 @pytest.mark.anyio
 async def test_every_decision_path_writes_one_decision_row(world, decision_rows):
-    """PRD F10: answer, SR, status, collect + follow-up, cancel, escalate — one row each."""
+    """PRD F10: every kind of reply (answer, SR, small talk, cancel, escalate…) — one row each."""
     replies = [(await _chat("does a rolling restart cause downtime?")).json()]
     replies.append((await _chat("restart the claims app in UAT, it's hung")).json())
+    replies.append((await _chat("yes")).json())
+    replies.append((await _chat("hi")).json())
     replies.append((await _chat("what's the status of my requests?")).json())
     _uat(world, '{"environment": "UAT-2", "extend_until": null, "reason": null}')
     replies.append((await _chat("extend UAT-2 please", user_id="u2")).json())
@@ -420,16 +509,18 @@ async def test_every_decision_path_writes_one_decision_row(world, decision_rows)
     assert [r["decision"] for r in decision_rows] == [r["decision"] for r in replies]
     assert [r["decision"] for r in replies] == [
         "ANSWER",
+        "CONFIRM_SR",
         "RAISE_SR",
+        "SMALLTALK",
         "STATUS_LOOKUP",
         "COLLECT_DETAILS",
         "CANCELLED",
         "CANCELLED",
         "ESCALATE",
     ]
-    raised = decision_rows[1]
+    raised = decision_rows[2]
     assert raised["user_id"] == "u1" and raised["sr_id"] == "1001" and raised["rule"] == 4
-    assert decision_rows[4]["turn"] == 1  # the cancel answered the open conversation
+    assert decision_rows[6]["turn"] == 1  # the cancel answered the open conversation
 
 
 @pytest.mark.anyio
@@ -442,7 +533,8 @@ async def test_a_failed_decision_write_still_returns_the_reply(
     monkeypatch.setattr(postgres_store, "record_decision", postgres_down)
 
     with caplog.at_level(logging.WARNING, logger="querydesk.services.pipeline"):
-        resp = await _chat("restart the claims app in UAT, it's hung")
+        await _chat("restart the claims app in UAT, it's hung")
+        resp = await _chat("yes")
         await pipeline.drain_decision_writes()
 
     assert resp.status_code == 200 and resp.json()["sr_id"] == "1001"
@@ -496,10 +588,17 @@ async def test_uat_extension_raised_from_one_message_plus_one_follow_up(world):
 
     second = (await _chat("till 11 PM")).json()
 
-    assert second["decision"] == "RAISE_SR"
-    assert second["sr_id"] == "1001"
+    assert second["decision"] == "CONFIRM_SR"
+    assert second["sr_id"] is None
     assert second["requires_approval"] is True
-    assert "approval" in second["reply"]
+    assert "extend until: 11 PM" in second["reply"]
+    assert await _srs(world) == []
+
+    third = (await _chat("yes")).json()
+
+    assert third["decision"] == "RAISE_SR"
+    assert third["sr_id"] == "1001"
+    assert "approval" in third["reply"]
     [sr] = await _srs(world)
     assert sr["metadata"] == {
         "environment": "UAT-2",
@@ -603,11 +702,14 @@ async def test_prod_given_in_the_follow_up_still_needs_approval(world):
 
     first = (await _chat("restart the claims app please")).json()
     second = (await _chat("prod")).json()
+    third = (await _chat("yes")).json()
 
     assert first["decision"] == "COLLECT_DETAILS"
     assert first["requires_approval"] is False
-    assert second["decision"] == "RAISE_SR"
+    assert second["decision"] == "CONFIRM_SR"
     assert second["requires_approval"] is True
+    assert third["decision"] == "RAISE_SR"
+    assert third["requires_approval"] is True
     [sr] = await _srs(world)
     assert sr["requires_approval"] is True
 
@@ -622,14 +724,16 @@ async def test_follow_up_logs_its_turn(world, caplog):
     with caplog.at_level(logging.INFO, logger="querydesk.decision"):
         await _chat("keep UAT-2 up for release testing")
         await _chat("till 11 PM")
+        await _chat("yes")
 
     entries = [json.loads(r.getMessage()) for r in caplog.records if r.name == "querydesk.decision"]
     assert [(e["turn"], e["decision"]) for e in entries] == [
         (0, "COLLECT_DETAILS"),
-        (1, "RAISE_SR"),
+        (1, "CONFIRM_SR"),
+        (2, "RAISE_SR"),
     ]
     assert entries[1]["router_top_two"] is None  # a follow-up searches nothing
-    assert entries[1]["sr_id"] == "1001"
+    assert entries[2]["sr_id"] == "1001"
 
 
 # --- Duplicate check (PRD F5) ----------------------------------------------------
@@ -637,7 +741,7 @@ async def test_follow_up_logs_its_turn(world, caplog):
 
 @pytest.mark.anyio
 async def test_an_open_sr_in_the_same_category_is_not_raised_twice(world):
-    first = (await _chat("restart the claims app in UAT, it's hung")).json()
+    first = await _raise("restart the claims app in UAT, it's hung")
     # Different fields, so a different idempotency key: only F5 stops it.
     world.extraction_reply = '{"application": "agent-portal", "environment": "UAT"}'
     again = (await _chat("restart agent-portal in UAT")).json()
@@ -657,7 +761,8 @@ async def test_an_open_sr_stops_the_details_being_asked_for_at_all(world):
         '{"environment": "UAT-2", "extend_until": null, "reason": "release testing"}',
     )
     await _chat("keep UAT-2 up for release testing")
-    raised = (await _chat("till 11 PM")).json()
+    await _chat("till 11 PM")
+    raised = (await _chat("yes")).json()
 
     again = (await _chat("keep UAT-2 up for release testing")).json()
 
@@ -671,11 +776,11 @@ async def test_an_open_sr_stops_the_details_being_asked_for_at_all(world):
 
 @pytest.mark.anyio
 async def test_a_closed_sr_in_the_same_category_allows_a_new_one(world):
-    first = (await _chat("restart the claims app in UAT, it's hung")).json()
+    first = await _raise("restart the claims app in UAT, it's hung")
     await _move(world, first["sr_id"], "IN_PROGRESS", "RESOLVED")
     world.extraction_reply = '{"application": "agent-portal", "environment": "UAT"}'
 
-    again = (await _chat("restart agent-portal in UAT")).json()
+    again = await _raise("restart agent-portal in UAT")
 
     assert again["sr_id"] != first["sr_id"]
     assert "I've raised SR" in again["reply"]
@@ -711,7 +816,7 @@ async def _postgres_down(**row):
 async def test_postgres_down_still_returns_the_sr(world, monkeypatch):
     monkeypatch.setattr(postgres_store, "record_sr", _postgres_down)
 
-    body = (await _chat("restart the claims app in UAT, it's hung")).json()
+    body = await _raise("restart the claims app in UAT, it's hung")
 
     assert body["decision"] == "RAISE_SR" and body["sr_id"] == "1001"
 
@@ -803,7 +908,7 @@ async def test_unhelpful_replies_up_to_the_cap_escalate_with_the_conversation(wo
     world.categories = [CategoryHit("it_password_reset", "Password", "d", 0.2)]
 
     await _chat("not sure")
-    body = (await _chat("hmm")).json()
+    body = (await _chat("dunno")).json()
 
     assert body["decision"] == "ESCALATE"
     assert body["reply"].startswith("I still don't have the extend until")
@@ -857,3 +962,185 @@ async def test_a_bare_cancel_with_nothing_open_records_nothing(world, cancel):
     assert body["reply"] == pipeline.NOTHING_TO_CANCEL_REPLY
     assert world.rows == []
     assert world.extraction_calls == [] and world.answer_calls == []
+
+
+# --- Small talk ----------------------------------------------------------------
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("text", ["hi", "hello!", "how are you?", "thanks", "what can you do?"])
+async def test_small_talk_is_answered_without_search_llm_or_escalation(world, text):
+    # What used to happen: nothing in the KB matches "hi", so rule 5 flagged it to the desk.
+    world.dense_score = 0.1
+    world.categories = [CategoryHit("it_password_reset", "Password", "d", 0.1)]
+
+    resp = await _chat(text)
+
+    body = resp.json()
+    assert resp.status_code == 200
+    assert body["decision"] == "SMALLTALK"
+    assert body["resolution_type"] == "CONVERSATION"
+    assert body["reply"] and body["sr_id"] is None and body["sources"] == []
+    assert world.embed_calls == [] and world.search_calls == 0
+    assert world.answer_calls == [] and world.extraction_calls == []
+    assert world.rows == [] and await _srs(world) == []
+
+
+@pytest.mark.anyio
+async def test_a_greeting_with_a_real_request_is_still_a_request(world):
+    body = (await _chat("hi, please restart the claims app in UAT")).json()
+
+    assert body["decision"] == "CONFIRM_SR"
+
+
+@pytest.mark.anyio
+async def test_small_talk_leaves_an_open_conversation_alone(world):
+    _uat(world, '{"environment": "UAT-2", "extend_until": null, "reason": "release testing"}')
+    await _chat("keep UAT-2 up for release testing")
+    calls = len(world.extraction_calls)
+
+    body = (await _chat("thanks")).json()
+
+    assert body["decision"] == "SMALLTALK"
+    assert "still waiting for the extend until" in body["reply"]
+    assert len(world.extraction_calls) == calls  # no LLM call for small talk
+    conv = await conversation.load("u1")
+    assert conv.stage == "collect" and conv.follow_ups == 0
+
+
+@pytest.mark.anyio
+async def test_small_talk_while_confirming_keeps_the_pending_sr(world):
+    await _chat("restart the claims app in UAT, it's hung")
+
+    body = (await _chat("thanks")).json()
+
+    assert body["decision"] == "SMALLTALK"
+    assert 'reply "yes" to raise it' in body["reply"]
+    assert (await conversation.load("u1")).stage == "confirm"
+    assert await _srs(world) == []
+
+
+# --- Chat history --------------------------------------------------------------
+
+
+async def _history(user_id="u1"):
+    await pipeline.drain_decision_writes()
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as c:
+        resp = await c.get("/history", params={"user_id": user_id})
+    assert resp.status_code == 200
+    return resp.json()
+
+
+@pytest.mark.anyio
+async def test_every_exchange_is_remembered_and_served_by_user(world):
+    world.dense_score = 0.77
+    await _chat("hi")
+    answer = (await _chat("does a rolling restart cause downtime?")).json()
+    await _chat("restart the claims app in UAT, it's hung", user_id="u2")
+
+    turns = await _history()
+
+    assert [(t["role"], t["decision"]) for t in turns] == [
+        ("user", None),
+        ("bot", "SMALLTALK"),
+        ("user", None),
+        ("bot", "ANSWER"),
+    ]
+    assert turns[2]["text"] == "does a rolling restart cause downtime?"
+    assert turns[3]["text"] == answer["reply"]
+    assert [t["decision"] for t in await _history("u2")] == [None, "CONFIRM_SR"]
+    assert await _history("nobody") == []
+
+
+@pytest.mark.anyio
+async def test_the_confirmation_and_the_sr_are_in_the_history(world):
+    await _raise("restart the claims app in UAT, it's hung")
+
+    turns = await _history()
+
+    assert [t["decision"] for t in turns] == [None, "CONFIRM_SR", None, "RAISE_SR"]
+    assert turns[2]["text"] == "yes" and "SR 1001" in turns[3]["text"]
+
+
+@pytest.mark.anyio
+async def test_a_failed_message_is_not_remembered(world, monkeypatch):
+    monkeypatch.setattr(tk, "_make_client", lambda: (_ for _ in ()).throw(tk.TicketingError("x")))
+    monkeypatch.setattr(tk, "_client", None)
+
+    assert (await _chat("restart the claims app in UAT")).status_code == 502
+
+    assert await _history() == []
+
+
+@pytest.mark.anyio
+async def test_history_down_never_breaks_chat(world, monkeypatch):
+    async def broken(*args, **kwargs):
+        raise RuntimeError("history exploded")
+
+    monkeypatch.setattr(pipeline.history, "append", broken)
+
+    resp = await _chat("hi")
+    await pipeline.drain_decision_writes()
+
+    assert resp.status_code == 200 and resp.json()["decision"] == "SMALLTALK"
+
+
+@pytest.mark.anyio
+async def test_a_follow_up_is_searched_as_a_standalone_question_when_enabled(world, monkeypatch):
+    monkeypatch.setattr(settings, "history_rewrite_enabled", True)
+    world.dense_score = 0.77
+    standalone = "How long does a rolling restart take for prod?"
+
+    async def fake_rewrite_llm(messages, **kwargs):
+        world.rewrite_prompts = [*getattr(world, "rewrite_prompts", []), messages]
+        return standalone
+
+    monkeypatch.setattr(pipeline.query_rewrite, "chat_completion", fake_rewrite_llm)
+    await _chat("does a rolling restart cause downtime?")
+    await pipeline.drain_decision_writes()
+
+    body = (await _chat("and for prod?")).json()
+
+    assert body["decision"] == "ANSWER"
+    # Embedded, searched and answered as the standalone question…
+    assert world.embed_calls == ["does a rolling restart cause downtime?", standalone]
+    assert standalone in world.answer_calls[-1][-1]["content"]
+    # …while the message itself is still what the user said.
+    assert "Latest message: and for prod?" in world.rewrite_prompts[0][0]["content"]
+
+
+@pytest.mark.anyio
+async def test_a_follow_up_is_not_rewritten_by_default(world):
+    world.dense_score = 0.77
+    await _chat("does a rolling restart cause downtime?")
+    await pipeline.drain_decision_writes()
+
+    await _chat("and for prod?")
+
+    assert world.embed_calls == ["does a rolling restart cause downtime?", "and for prod?"]
+
+
+@pytest.mark.anyio
+async def test_a_rewrite_never_changes_what_an_sr_is_raised_from(world, monkeypatch, caplog):
+    monkeypatch.setattr(settings, "history_rewrite_enabled", True)
+
+    async def fake_rewrite_llm(messages, **kwargs):
+        return "Please restart the payments app in prod"
+
+    monkeypatch.setattr(pipeline.query_rewrite, "chat_completion", fake_rewrite_llm)
+    await _chat("hi")  # something in the history
+    await pipeline.drain_decision_writes()
+
+    with caplog.at_level(logging.INFO, logger="querydesk.decision"):
+        await _chat("please restart that again, the claims app in UAT")
+    body = (await _chat("yes")).json()
+
+    [sr] = await _srs(world)
+    assert sr["description"] == "please restart that again, the claims app in UAT"
+    assert sr["metadata"] == {"application": "claims", "environment": "UAT"}
+    assert body["decision"] == "RAISE_SR"
+    entries = [json.loads(r.getMessage()) for r in caplog.records if r.name == "querydesk.decision"]
+    [entry] = [e for e in entries if e["query"].startswith("please restart that")]
+    assert "rewritten: searched as a standalone question" in entry["overrides"]

@@ -120,6 +120,25 @@ Everything after SR creation is async (webhook → Redis → Celery).
   conversation's category, fields and transcript, and its reply names what's missing. Raised SRs and escalations
   are recorded in `sr_requests`; a failed write never loses the SR, and a failed escalation write
   falls back to "contact the desk" instead of "flagged".
+- **Small talk and confirmation.** `handle_message()` first checks `decision/smalltalk.py` (the
+  whole message must be a greeting, thanks, bye, "what can you do?" or a bare ack): a fixed reply,
+  `SMALLTALK` / `ResolutionType.CONVERSATION`, no embedding, search, LLM call or `sr_requests` row,
+  and an open conversation is left alone (the reply nudges what it waits for). **An SR is never
+  raised on the message that completes it**: `_propose_sr()` saves the conversation with
+  `stage="confirm"` and replies `CONFIRM_SR` with the details; only a `yes` (`_YES`) in
+  `_continue()` raises it (`_advance(confirmed=True)`). `no`/cancel raises nothing, a reply that
+  corrects a detail re-confirms, and any other message drops the pending SR. The engine still
+  emits `RAISE_SR`; the confirm step lives in the pipeline, so the eval is unaffected.
+- **Chat history.** `services/history.py` owns `history:{user_id}` (last `history_turns` exchanges,
+  `history_ttl_s`; Redis down = empty, never a 500). `handle_message()` is a thin wrapper that runs
+  `_handle_message()` and records the exchange as a background task (held in `_decision_writes`, so
+  `drain_decision_writes()` also finishes it); a failed message is not recorded. `GET /history`
+  serves it by `user_id` (no login in v1, so anyone with the id can read it). With
+  `history_rewrite_enabled` (off by default) a fresh message with a reference word ("it", "same",
+  "and for prod?") and no open conversation is rewritten by `services/query_rewrite.py` into a
+  standalone question that is used **only** to embed, search, route and generate the answer; intent
+  signals, field extraction, the SR description and the logs keep the original text. Do not enable
+  it before `eval_run.py` shows routing accuracy and the action-answered-with-article rate unchanged.
 - `services/conversation.py` owns `conversation:{user_id}`. Redis down means single-turn, never a
   500: `load` returns None, `save`/`clear` are no-ops.
 - `services/rag.py` has `retrieve()` (search only — the decision needs the score first) and

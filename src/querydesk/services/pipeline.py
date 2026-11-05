@@ -1,8 +1,14 @@
 """
 One chat message, end to end:
 
-  open conversation? -> extract from the reply -> merge -> raise / ask again / escalate
+  open conversation? -> yes/no to a pending SR | extract from the reply -> merge
+                        -> confirm / ask again / escalate
+  small talk ("hi", "thanks")? -> a fixed reply, no search, nothing recorded
   otherwise:  embed once -> retrieve + route (concurrently) -> classify -> decide -> act
+
+An SR is never raised on the first complete message: the user sees what will
+be raised and says yes (stage "confirm" of the conversation). A "no" or a
+cancel raises nothing, and a reply that corrects a detail re-confirms.
 
 A reply that states no field is judged as a fresh message first: if that
 would only escalate (rule 5, it makes no sense on its own) it counts as an
@@ -30,9 +36,9 @@ import anyio
 from querydesk.core.config import settings
 from querydesk.core.errors import PostgresStoreError
 from querydesk.models.schemas import Decision, ResolutionType, Source
-from querydesk.services import catalog, conversation, rag, status
+from querydesk.services import catalog, conversation, history, query_rewrite, rag, status
 from querydesk.services.conversation import Conversation
-from querydesk.services.decision import extraction
+from querydesk.services.decision import extraction, smalltalk
 from querydesk.services.decision.engine import (
     DecisionEngine,
     DecisionInput,
@@ -71,6 +77,17 @@ _CANCEL = re.compile(
     r"^\s*(please\s+)?(cancel|never\s*mind|nvm|stop|forget\s+(it|that|about\s+it))"
     r"(\s+(it|that|this|the\s+request))?(\s+please)?[\s.!]*$",
     re.IGNORECASE,
+)
+
+# The whole message is a yes / no to "Shall I raise this?".
+_YES = re.compile(
+    r"^\s*(yes+|yeah|yep|yup|y|sure|ok(ay)?|confirm(ed)?|go\s+ahead|go\s+for\s+it|"
+    r"please\s+do|do\s+it|proceed|raise\s+(it|this)|sounds\s+good|correct|that'?s\s+right)"
+    r"(\s+please)?[\s.!]*$",
+    re.IGNORECASE,
+)
+_NO = re.compile(
+    r"^\s*(no+|nope|nah|n|don'?t|do\s+not|not\s+now|no\s+thanks?)[\s.!]*$", re.IGNORECASE
 )
 
 
@@ -143,6 +160,40 @@ async def _already_open(
         ),
         resolution_type=ResolutionType.AUTO_SR,
         sr_id=existing.id,
+        **_base(out, confidence),
+    )
+
+
+def _confirm_reply(out: DecisionOutput) -> str:
+    category = catalog.get(out.category_id)
+    lines = [f"Here's what I'll raise ({category.name}):"]
+    lines += [f"- {_readable(name)}: {value}" for name, value in out.fields.items()]
+    if out.requires_approval:
+        lines.append("It will need approval before work starts.")
+    lines.append('Shall I go ahead? Reply "yes" to raise it, or "no" to cancel.')
+    return "\n".join(lines)
+
+
+async def _propose_sr(
+    conv: Conversation, out: DecisionOutput, confidence: float | None, reply: str | None = None
+) -> ChatResult:
+    """
+    The SR is complete: show it and wait for a yes. Nothing is created here.
+    A duplicate is reported instead (F5), so nobody confirms an SR they
+    can't have. `reply` is the user's message when it added to the request.
+    """
+    if duplicate := await _already_open(conv.user_id, out, confidence):
+        await conversation.clear(conv.user_id)
+        return duplicate
+    if reply is not None:
+        conv.turns.append(reply)
+        conv.follow_ups += 1
+    conv.fields, conv.missing, conv.stage = out.fields, [], "confirm"
+    await conversation.save(conv)
+    out.decision = Decision.CONFIRM_SR
+    return ChatResult(
+        reply=_confirm_reply(out),
+        resolution_type=ResolutionType.AUTO_SR,
         **_base(out, confidence),
     )
 
@@ -244,12 +295,18 @@ def _cap_replies(missing: list[str]) -> tuple[str, str]:
 
 
 async def _act(
-    user_id: str, query: str, retrieval: rag.Retrieval | None, out: DecisionOutput
+    user_id: str,
+    query: str,
+    retrieval: rag.Retrieval | None,
+    out: DecisionOutput,
+    answer_query: str | None = None,
 ) -> ChatResult:
     confidence = retrieval.top_dense_score if retrieval is not None else None
 
     if out.decision in (Decision.ANSWER, Decision.ANSWER_WITH_DISCLAIMER):
-        answer = await rag.generate(query, retrieval)
+        # The answer is for the question as searched (a rewritten follow-up),
+        # but every other path acts on what the user actually wrote.
+        answer = await rag.generate(answer_query or query, retrieval)
         reply = answer.reply
         if out.decision is Decision.ANSWER_WITH_DISCLAIMER:
             reply += DISCLAIMER
@@ -261,7 +318,13 @@ async def _act(
         )
 
     if out.decision is Decision.RAISE_SR:
-        return await _raise_sr(user_id, query, out, confidence)
+        conv = Conversation(
+            user_id=user_id,
+            category_id=out.category_id,
+            original_query=query,
+            retrieval_confidence=confidence,
+        )
+        return await _propose_sr(conv, out, confidence)
 
     if out.decision is Decision.COLLECT_DETAILS:
         if duplicate := await _already_open(user_id, out, confidence):
@@ -369,20 +432,30 @@ async def drain_decision_writes() -> None:
         await asyncio.gather(*_decision_writes, return_exceptions=True)
 
 
-async def _advance(user_id: str, query: str, conv: Conversation, out: DecisionOutput) -> ChatResult:
+async def _advance(
+    user_id: str,
+    query: str,
+    conv: Conversation,
+    out: DecisionOutput,
+    *,
+    confirmed: bool = False,
+) -> ChatResult:
     """
-    One reply in an open conversation, decided (`out` from complete_sr): raise
-    the SR, ask again for what's still missing, or escalate — forced by rule
-    6, or F4's cap after the last follow-up we allow. The escalation carries
-    the conversation's category, fields and transcript, so the desk has them.
+    One reply in an open conversation, decided (`out` from complete_sr): ask
+    to confirm a complete SR (raise it once `confirmed`), ask again for
+    what's still missing, or escalate — forced by rule 6, or F4's cap after
+    the last follow-up we allow. The escalation carries the conversation's
+    category, fields and transcript, so the desk has them.
     """
     turn = conv.follow_ups + 1
     transcript = conv.transcript(query)
     confidence = conv.retrieval_confidence
 
     if out.decision is Decision.RAISE_SR:
+        if not confirmed:
+            return await _propose_sr(conv, out, confidence, reply=query)
         await conversation.clear(user_id)
-        return await _raise_sr(user_id, transcript, out, confidence)
+        return await _raise_sr(user_id, conv.transcript_so_far(), out, confidence)
 
     if out.decision is Decision.COLLECT_DETAILS and turn < settings.conversation_max_follow_ups:
         conv.fields, conv.missing = out.fields, out.missing_fields
@@ -413,11 +486,12 @@ async def _logged_advance(
     *,
     turn: int,
     router: RouterResult | None = None,
+    confirmed: bool = False,
 ) -> ChatResult:
     decided = time.perf_counter()
     result, error = None, None
     try:
-        result = await _advance(user_id, query, conv, out)
+        result = await _advance(user_id, query, conv, out, confirmed=confirmed)
         return result
     except Exception as e:
         error = type(e).__name__
@@ -455,7 +529,8 @@ async def _continue(
     intent = classify(query)
     turn = conv.follow_ups + 1
 
-    if _CANCEL.match(query):
+    confirming = conv.stage == "confirm"
+    if _CANCEL.match(query) or (confirming and _NO.match(query)):
         await conversation.clear(user_id)
         out = DecisionOutput(
             Decision.CANCELLED, ResolutionType.AUTO_SR, 0, engine.name, conv.category_id
@@ -477,6 +552,14 @@ async def _continue(
             confidence=conv.retrieval_confidence,
         )
         return result
+
+    if confirming and _YES.match(query):
+        out = await engine.complete_sr(conv.category_id, conv.fields)
+        out.overrides.append("confirmed")
+        timings = {"decide": round((time.perf_counter() - start) * 1000, 1), "extraction": None}
+        return await _logged_advance(
+            user_id, query, conv, out, intent, timings, start, turn=turn, confirmed=True
+        )
 
     # Only the reply is a source of values; the original request is context.
     extract_start = time.perf_counter()
@@ -514,11 +597,17 @@ class _Fresh:
     out: DecisionOutput
     start: float
     timings: dict
+    # What was embedded and searched: `query`, or its rewrite as a standalone
+    # question. Intent, extraction, the SR text and logs always use `query`.
+    search_query: str = ""
 
 
-async def _decide_fresh(query: str, engine: DecisionEngine) -> _Fresh:
+async def _decide_fresh(
+    query: str, engine: DecisionEngine, search_query: str | None = None
+) -> _Fresh:
     start = time.perf_counter()
     intent = classify(query)
+    search_query = search_query or query
 
     if intent.is_status:
         # Rule 1 needs nothing but the intent, so a status question skips the
@@ -536,16 +625,16 @@ async def _decide_fresh(query: str, engine: DecisionEngine) -> _Fresh:
         timings = {"embed": 0.0, "search": 0.0, "decide": decided, "extraction": None}
         return _Fresh(None, None, intent, out, start, timings)
 
-    vectors = await embed_query_vectors(query)
+    vectors = await embed_query_vectors(search_query)
     embedded = time.perf_counter()
 
     found: dict = {}
 
     async def _retrieve():
-        found["retrieval"] = await rag.retrieve(query, vectors)
+        found["retrieval"] = await rag.retrieve(search_query, vectors)
 
     async def _route():
-        found["router"] = await route(query, vectors.dense)
+        found["router"] = await route(search_query, vectors.dense)
 
     try:
         async with anyio.create_task_group() as tg:
@@ -576,14 +665,14 @@ async def _decide_fresh(query: str, engine: DecisionEngine) -> _Fresh:
         "decide": round((decided - searched) * 1000 - (out.extraction_ms or 0), 1),
         "extraction": out.extraction_ms,
     }
-    return _Fresh(retrieval, router, intent, out, start, timings)
+    return _Fresh(retrieval, router, intent, out, start, timings, search_query)
 
 
 async def _act_fresh(user_id: str, query: str, fresh: _Fresh) -> ChatResult:
     acting = time.perf_counter()
     result, error = None, None
     try:
-        result = await _act(user_id, query, fresh.retrieval, fresh.out)
+        result = await _act(user_id, query, fresh.retrieval, fresh.out, fresh.search_query)
         return result
     except Exception as e:
         # The failed messages are the ones most worth auditing: log the
@@ -611,11 +700,88 @@ async def _act_fresh(user_id: str, query: str, fresh: _Fresh) -> ChatResult:
         )
 
 
+def _pending_nudge(conv: Conversation) -> str:
+    """Small talk doesn't close an open request: say what it is waiting for."""
+    category = catalog.get(conv.category_id)
+    if conv.stage == "confirm":
+        return (
+            f' Your {category.name} request is waiting: reply "yes" to raise it or "no" to cancel.'
+        )
+    wanted = _join([_readable(f) for f in conv.missing])
+    return (
+        f' I\'m still waiting for the {wanted} for your {category.name} request, or say "cancel".'
+    )
+
+
+def _smalltalk(
+    user_id: str,
+    query: str,
+    kind: smalltalk.Kind,
+    conv: Conversation | None,
+    engine: DecisionEngine,
+) -> ChatResult:
+    """
+    Hello, thanks, "what can you do?": a fixed reply. No embedding, search,
+    LLM call or sr_requests row, and an open conversation is left alone.
+    """
+    out = DecisionOutput(
+        Decision.SMALLTALK,
+        ResolutionType.CONVERSATION,
+        0,
+        engine.name,
+        conv.category_id if conv else None,
+    )
+    reply = smalltalk.reply(kind) + (_pending_nudge(conv) if conv else "")
+    result = ChatResult(reply=reply, resolution_type=out.resolution_type, **_base(out, None))
+    out.overrides.append(f"smalltalk: {kind.value}")
+    _log(
+        user_id,
+        query,
+        classify(query),
+        out,
+        result,
+        {"total": 0.0},
+        turn=conv.follow_ups + 1 if conv else 0,
+    )
+    return result
+
+
+async def _search_text(user_id: str, query: str) -> str:
+    """`query` read in the light of the recent chat, when that is switched on and needed."""
+    if not settings.history_rewrite_enabled or not query_rewrite.has_reference(query):
+        return query
+    return await query_rewrite.standalone(query, await history.load(user_id))
+
+
+def _record_history(user_id: str, query: str, result: ChatResult) -> None:
+    """Remember the exchange in the background: never adds to the reply's latency."""
+    task = asyncio.get_running_loop().create_task(
+        history.append(user_id, query, result.reply, result.decision.value)
+    )
+    _decision_writes.add(task)
+    task.add_done_callback(_decision_written)
+
+
 async def handle_message(
+    user_id: str, query: str, engine: DecisionEngine | None = None
+) -> ChatResult:
+    result = await _handle_message(user_id, query, engine)
+    _record_history(user_id, query, result)
+    return result
+
+
+async def _handle_message(
     user_id: str, query: str, engine: DecisionEngine | None = None
 ) -> ChatResult:
     engine = engine or get_engine()
     conv = await conversation.load(user_id)
+
+    kind = smalltalk.classify(query)
+    answering_prompt = (
+        conv is not None and conv.stage == "confirm" and (_YES.match(query) or _NO.match(query))
+    )
+    if kind is not None and not answering_prompt:
+        return _smalltalk(user_id, query, kind, conv, engine)
 
     if conv is None and _CANCEL.match(query):
         # Nothing open: don't search, escalate or record a bare "cancel".
@@ -631,7 +797,11 @@ async def handle_message(
         if result is not None:
             return result
 
-    fresh = await _decide_fresh(query, engine)
+    # Only with nothing open: a reply in a conversation is about that request.
+    search_query = await _search_text(user_id, query) if conv is None else query
+    fresh = await _decide_fresh(query, engine, search_query)
+    if search_query != query:
+        fresh.out.overrides.append("rewritten: searched as a standalone question")
     if conv is None:
         return await _act_fresh(user_id, query, fresh)
 

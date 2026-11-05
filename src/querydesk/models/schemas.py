@@ -16,6 +16,8 @@ class ResolutionType(StrEnum):
     # The SR path: an SR was raised, or details are being collected for one.
     AUTO_SR = "AUTO_SR"
     MANUAL_ESCALATION = "MANUAL_ESCALATION"
+    # Small talk: nothing was answered from the KB, raised or escalated.
+    CONVERSATION = "CONVERSATION"
 
 
 class Decision(StrEnum):
@@ -27,8 +29,12 @@ class Decision(StrEnum):
     RAISE_SR = "RAISE_SR"
     ESCALATE = "ESCALATE"
     STATUS_LOOKUP = "STATUS_LOOKUP"
-    # Not a rule outcome: the user cancelled an open slot-filling conversation.
+    # Not rule outcomes. The pipeline's: the user cancelled an open
+    # conversation, said hello/thanks, or the SR is complete and waits for a
+    # yes before it is raised.
     CANCELLED = "CANCELLED"
+    SMALLTALK = "SMALLTALK"
+    CONFIRM_SR = "CONFIRM_SR"
 
 
 class ChatRequest(BaseModel):
@@ -62,6 +68,15 @@ class ChatResponse(BaseModel):
     sr_id: str | None = None
     missing_fields: list[str] = Field(default_factory=list)
     requires_approval: bool | None = None
+
+
+class HistoryTurn(BaseModel):
+    """One message in a user's recent chat (GET /history)."""
+
+    role: str  # "user" or "bot"
+    text: str
+    decision: Decision | None = None
+    at: str
 
 
 class SRStatusEvent(BaseModel):
