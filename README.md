@@ -43,7 +43,7 @@ From [docs/eval-report-v3.md](docs/eval-report-v3.md), 94 labelled messages:
 ```mermaid
 flowchart LR
     U[User / chat page] -->|POST /chat| API[FastAPI<br/>pipeline.handle_message]
-    API -->|conversation, query cache| R[(Upstash Redis)]
+    API -->|conversation, history, query cache| R[(Upstash Redis)]
     API -->|embed query, generate answer| FW[Fireworks<br/>qwen3-embedding-8b · minimax-m3]
     API -->|hybrid search, router| Q[(Qdrant Cloud<br/>kb_chunks · categories)]
     API -->|POST /sr + Idempotency-Key<br/>GET /sr| T[Ticketing service<br/>Spring Boot]
@@ -61,11 +61,14 @@ flowchart LR
 
 **One message, start to finish:**
 
-1. **Slot filling first.** If a slot-filling conversation is open, the reply fills the missing
+1. **Small talk is answered first.** A message that is only a greeting, thanks, goodbye, "what
+   can you do?" or a bare "ok" gets a fixed reply. It triggers no search, no LLM call and no
+   SR record.
+2. **Slot filling next.** If a slot-filling conversation is open, the reply fills the missing
    fields. There's no search.
-2. **Status questions next.** A status question ("status of my requests") is answered from the
+3. **Then status questions.** A status question ("status of my requests") is answered from the
    ticketing service, also without a search.
-3. **Otherwise, a fresh message:**
+4. **Otherwise, a fresh message:**
    - It's embedded once.
    - Hybrid search (dense + BM25) and the category router run at the same time.
    - A rule engine picks exactly one decision:
@@ -73,11 +76,19 @@ flowchart LR
      - **raise an SR**, with an idempotency key;
      - **ask for the missing fields**;
      - **escalate** to the service desk.
-4. **Status changes come back asynchronously.** Each one arrives as a signed webhook, a Celery
+5. **An SR is never raised on the message that completes it.** The user sees the category and
+   details and confirms with a "yes". A "no" or "cancel" drops it, and a correction shows the
+   details again.
+6. **Status changes come back asynchronously.** Each one arrives as a signed webhook, a Celery
    worker writes it once, and the chat page shows it. A WhatsApp user also gets it in their chat.
-5. **Every decision is recorded.** It goes to one `querydesk.decision` log line and to a
+7. **Every decision is recorded.** It goes to one `querydesk.decision` log line and to a
    `decision_logs` row in Postgres (PRD F10). The write runs in the background and never slows
    the reply.
+
+The last few exchanges per user are kept in Redis (`history:{user_id}`, 24 h), so the chat page
+can show the conversation again after a reload. An optional rewrite turns follow-ups like "and
+for prod?" into a standalone question before searching. It is off by default
+(`history_rewrite_enabled`) until the eval shows routing unchanged.
 
 WhatsApp messages take the same path: the worker runs the same `handle_message()` as `/chat`,
 under a `wa-` id derived from the number. The number itself never leaves `whatsapp_users`.
@@ -100,7 +111,7 @@ cp .env.example .env
 
 ```bash
 uv run scripts/check_services.py    # Qdrant / Redis / Postgres reachability
-uv run scripts/migrate.py           # create/upgrade sr_requests + notifications in Neon
+uv run scripts/migrate.py           # apply migrations/*.sql to Neon (sr_requests, notifications, decision_logs, whatsapp_users)
 uv run scripts/ingest.py            # chunk, embed (dense + BM25) and index data/kb into Qdrant
 uv run scripts/ingest.py --recreate # only when the collection schema or embedding model changes
 ```
@@ -142,10 +153,12 @@ Each message gets exactly one `decision` (first match wins):
 
 | Decision | `resolution_type` | When |
 | --- | --- | --- |
+| `SMALLTALK` | `CONVERSATION` | the whole message is a greeting, thanks, bye, "what can you do?" or a bare ack; fixed reply |
 | `STATUS_LOOKUP` | `MANUAL_ESCALATION` | asks about an existing request; answered from the ticketing service |
 | `ANSWER` | `RAG` | not an action, top dense score ≥ `confidence_high` |
 | `ANSWER_WITH_DISCLAIMER` | `RAG` | not an action, score ≥ `confidence_mid` |
-| `RAISE_SR` | `AUTO_SR` | an action, router confident, all required fields present → `sr_id` |
+| `CONFIRM_SR` | `AUTO_SR` | an action, router confident, all required fields present → shows the SR and waits for a "yes" |
+| `RAISE_SR` | `AUTO_SR` | the user confirmed → `sr_id` (also returned for an SR already open in that category) |
 | `COLLECT_DETAILS` | `AUTO_SR` | as above, but fields are missing → asks for them, opens a conversation |
 | `ESCALATE` | `MANUAL_ESCALATION` | anything else; recorded in `sr_requests` for the desk |
 | `CANCELLED` | `AUTO_SR` | "cancel" ends an open conversation |
@@ -160,7 +173,8 @@ The rules behind the decisions:
   (force approval or escalation).
 
 Other endpoints: `GET /health`, `GET /health/ready` (also pings Qdrant), `GET /notifications`,
-`POST /notifications/read`, `POST /webhooks/sr-status` (HMAC-signed, for the ticketing service),
+`POST /notifications/read`, `GET /history` (a user's recent chat; there's no login in v1, so
+anyone with the `user_id` can read it), `POST /webhooks/sr-status` (HMAC-signed, for the ticketing service),
 `GET`/`POST /webhooks/whatsapp` (Meta's verify check and signed messages).
 
 ## Run with Docker
@@ -264,13 +278,15 @@ src/querydesk/
   worker.py                     # Celery app: notify, reconcile, WhatsApp message + send tasks
   core/config.py                # all settings — nothing else reads the environment
   core/errors.py                # UpstreamError family → HTTP 502
-  api/routes/                   # chat, health, notifications, webhooks, whatsapp
+  api/routes/                   # chat, health, history, notifications, webhooks, whatsapp
   static/index.html             # the one-file chat page
   models/schemas.py             # request/response shapes, Decision, ResolutionType
   eval/                         # eval-set schema, calibration, report rendering
   services/
     pipeline.py                 # the whole /chat flow
     conversation.py             # slot-filling state in Redis
+    history.py                  # recent chat per user in Redis
+    query_rewrite.py            # follow-up → standalone question (off by default)
     status.py                   # status answers
     rag.py                      # retrieve() + generate() a grounded answer
     catalog.py                  # the only app-code reader of categories.json
@@ -279,7 +295,7 @@ src/querydesk/
     llm/jev.py                  # Jev via JevStation (offline comparison only)
     retrieval/                  # embedding entry point, query embedding + cache, Qdrant, BM25, chunking
     routing/router.py           # top-two categories + whether it's confident
-    decision/                   # signals, field extraction, rule 6, the rule engine
+    decision/                   # small talk, signals, field extraction, rule 6, the rule engine
     ticketing/client.py         # the only module that talks to the ticketing service
     notifications/              # HMAC signing, the idempotent status-change handler
     messaging/                  # WhatsApp: identity, formatting, inbound, Meta and Twilio clients
