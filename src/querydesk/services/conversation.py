@@ -61,11 +61,17 @@ async def load(user_id: str) -> Conversation | None:
         return None
 
 
-async def save(conv: Conversation) -> None:
+async def save(conv: Conversation) -> bool:
+    """
+    True once saved. A failure is logged, never raised; callers that need
+    the next message to find this state (the confirm step) must check it.
+    """
     try:
         await redis_store.set_json(_key(conv.user_id), asdict(conv), settings.conversation_ttl_s)
     except RedisStoreError as e:
         logger.warning("Could not save conversation state: %s", e)
+        return False
+    return True
 
 
 async def clear(user_id: str) -> None:

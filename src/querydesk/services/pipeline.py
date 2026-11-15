@@ -64,6 +64,15 @@ ESCALATE_FALLBACK_REPLY = (
     "I can't handle this one automatically. Please contact the service desk team "
     "directly so a person can pick it up."
 )
+# The confirm step couldn't be saved, so a "yes" would find nothing to raise.
+UNSAVED_CONFIRM_REPLY = (
+    "I can't hold this request for your confirmation right now, so I've passed it with its "
+    "details to the service desk team. A person will pick it up."
+)
+UNSAVED_CONFIRM_FALLBACK_REPLY = (
+    "I can't hold this request for your confirmation right now. Please try again in a few "
+    "minutes, or contact the service desk team directly."
+)
 CANCELLED_REPLY = "OK, I've cancelled that request. Nothing was raised."
 NOTHING_TO_CANCEL_REPLY = "There's no open request to cancel."
 DISCLAIMER = (
@@ -189,7 +198,20 @@ async def _propose_sr(
         conv.turns.append(reply)
         conv.follow_ups += 1
     conv.fields, conv.missing, conv.stage = out.fields, [], "confirm"
-    await conversation.save(conv)
+    if not await conversation.save(conv):
+        # Redis is down: the user's "yes" would find nothing and the request
+        # would be lost silently. Never raise unconfirmed, so hand it to the
+        # desk with its details instead.
+        out.overrides.append("unsaved: could not hold the SR for confirmation")
+        out.decision = Decision.ESCALATE
+        out.resolution_type = ResolutionType.MANUAL_ESCALATION
+        return await _escalate(
+            conv.user_id,
+            conv.transcript_so_far(),
+            out,
+            confidence,
+            replies=(UNSAVED_CONFIRM_REPLY, UNSAVED_CONFIRM_FALLBACK_REPLY),
+        )
     out.decision = Decision.CONFIRM_SR
     return ChatResult(
         reply=_confirm_reply(out),
