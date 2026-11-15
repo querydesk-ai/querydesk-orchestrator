@@ -808,6 +808,40 @@ async def test_redis_down_means_single_turn_not_a_500(world, monkeypatch):
     assert resp.json()["decision"] == "COLLECT_DETAILS"
 
 
+@pytest.mark.anyio
+async def test_redis_down_hands_a_complete_request_to_the_desk(world, monkeypatch):
+    # Regression (2026-11-15): the confirm prompt went out, the pending SR
+    # wasn't saved, and the user's "yes" became small talk. Nothing raised,
+    # nobody told.
+    monkeypatch.setattr(redis_store, "_client", _DownRedis())
+
+    body = (await _chat("restart the claims app in UAT, it's hung")).json()
+
+    assert body["decision"] == "ESCALATE"
+    assert body["resolution_type"] == "MANUAL_ESCALATION"
+    assert body["category_id"] == "it_application_restart"
+    assert body["sr_id"] is None
+    assert body["reply"] == pipeline.UNSAVED_CONFIRM_REPLY
+    assert await _srs(world) == []  # never raised without a yes
+    [row] = world.rows
+    assert row["resolution_type"] == "MANUAL_ESCALATION"
+    assert row["category_id"] == "it_application_restart"
+    assert row["details"]["fields"] == {"application": "claims", "environment": "UAT"}
+    assert row["details"]["query"] == "restart the claims app in UAT, it's hung"
+
+
+@pytest.mark.anyio
+async def test_redis_and_postgres_down_tells_the_user_to_retry(world, monkeypatch):
+    monkeypatch.setattr(redis_store, "_client", _DownRedis())
+    monkeypatch.setattr(postgres_store, "record_escalation", _postgres_down)
+
+    body = (await _chat("restart the claims app in UAT, it's hung")).json()
+
+    assert body["decision"] == "ESCALATE"
+    assert body["reply"] == pipeline.UNSAVED_CONFIRM_FALLBACK_REPLY
+    assert await _srs(world) == []
+
+
 async def _postgres_down(**row):
     raise PostgresStoreError("Postgres connect failed")
 

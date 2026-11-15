@@ -140,7 +140,9 @@ Everything after SR creation is async (webhook → Redis → Celery).
   signals, field extraction, the SR description and the logs keep the original text. Do not enable
   it before `eval_run.py` shows routing accuracy and the action-answered-with-article rate unchanged.
 - `services/conversation.py` owns `conversation:{user_id}`. Redis down means single-turn, never a
-  500: `load` returns None, `save`/`clear` are no-ops.
+  500: `load` returns None, `clear` is a no-op, and `save` returns False. `_propose_sr()` checks
+  it: a confirm step that can't be saved escalates with the fields (`unsaved:` override) rather
+  than ask for a "yes" that would find nothing.
 - `services/rag.py` has `retrieve()` (search only — the decision needs the score first) and
   `generate()` (the grounded answer). Routing rules do not go in it.
 - `services/retrieval/query.py::embed_query_vectors()` embeds a message **once**; pass the result to

@@ -37,7 +37,7 @@ def _conv(**overrides):
 
 @pytest.mark.anyio
 async def test_round_trip_and_ttl(fake_redis):
-    await conversation.save(_conv(turns=["till 11 PM"], follow_ups=1))
+    assert await conversation.save(_conv(turns=["till 11 PM"], follow_ups=1)) is True
 
     loaded = await conversation.load("u1")
 
@@ -75,7 +75,7 @@ async def test_redis_down_degrades_without_raising(monkeypatch):
     monkeypatch.setattr(redis_store, "_client", _DownRedis())
 
     assert await conversation.load("u1") is None
-    await conversation.save(_conv())  # no exception
+    assert await conversation.save(_conv()) is False  # no exception, but reported
     await conversation.clear("u1")
 
 
@@ -83,7 +83,7 @@ async def test_redis_down_degrades_without_raising(monkeypatch):
 async def test_unconfigured_redis_means_no_conversation():
     # conftest leaves REDIS_URL empty.
     assert await conversation.load("u1") is None
-    await conversation.save(_conv())
+    assert await conversation.save(_conv()) is False
 
 
 @pytest.mark.anyio

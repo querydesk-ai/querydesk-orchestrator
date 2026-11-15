@@ -11,7 +11,7 @@ QueryDesk is two services, each owned by one team, behind one API contract:
 
 | Repo | What it does | Owner |
 | --- | --- | --- |
-| **querydesk-orchestrator** (this repo) | Chat API, hybrid retrieval and cited answers, category router, decision layer, slot filling, ticketing client, signed-webhook receiver, Celery notifications, decision logs, chat page, WhatsApp chat, Docker stack, eval tooling | Orchestrator team |
+| **querydesk-orchestrator** (this repo) | Chat API, hybrid retrieval and cited answers, category router, decision layer, slot filling, small talk, SR confirmation, chat history, ticketing client, signed-webhook receiver, Celery notifications, decision logs, chat page, WhatsApp chat, Docker stack, eval tooling | Orchestrator team |
 | [querydesk-ticketing](https://github.com/querydesk-ai/querydesk-ticketing) | Spring Boot 3 / Java 21 SR service: status state machine, idempotent creation, webhook outbox with retries, UAT auto-revert | Ticketing team |
 | [querydesk-docs](https://github.com/querydesk-ai/querydesk-docs) | PRD, the OpenAPI contract (`openapi.yaml`), `categories.json`, the eval set | Both teams |
 
@@ -20,23 +20,36 @@ database.
 
 ## Results
 
-From [docs/eval-report-v3.md](docs/eval-report-v3.md), 94 labelled messages:
+Re-measured on 2026-11-15, 3 runs each, on `main` with every feature in this README
+([docs/verification-2026-11-15.md](docs/verification-2026-11-15.md)). The eval set has 94
+labelled messages:
 
 | Metric | Result | PRD target |
 | --- | --- | --- |
-| Routing accuracy (right decision for the message) | **96%** | ≥ 90% |
+| Routing accuracy (right decision for the message) | **96%**, identical in all 3 runs | ≥ 90% |
 | Category accuracy on SR-bound queries | **100%** | ≥ 90% |
 | Action requests wrongly answered with an article | **0%** | ≤ 5% |
-| Status changes notified within 1 minute | **10 of 10** (median 3.1 s) | 10 of 10 |
-| p95 latency, answer path | **7.9 s** ❌ | < 3 s |
+| Answers supported by the cited article | **18 of 20** (v3) | 18 of 20 |
+| Status changes notified within 1 minute | **10 of 10** (v3, median 3.1 s) | 10 of 10 |
+| Latency, answer path end to end | **3.6 s p50, 4.4 s p95** ❌ | p95 < 3 s |
+
+The two rows marked v3 are hand-measured and come from
+[docs/eval-report-v3.md](docs/eval-report-v3.md). They were not repeated.
 
 **Known limitation: latency.**
-- A first-time question spends ~2.3 s embedding (Fireworks qwen3) and ~2.3 s generating, which
-  puts the answer path above the 3 s target.
+- A first-time question spends ~1.5 s embedding (Fireworks qwen3) and ~1.7 s generating
+  (p50), which puts the answer path above the 3 s target.
+- The figure moves with the network and the providers. v3 measured 7.9 s p95 on 2026-10-17 with
+  the same code and models.
 - A repeated message hits the Redis query cache and embeds in 30–60 ms.
 - A faster local embedding model was trialled and rejected, because it routed worse
   ([docs/embedding-trial.md](docs/embedding-trial.md)). For this product, routing quality comes
   first.
+
+**Without Redis, a complete request goes to the desk.** The confirm step keeps the pending SR in
+Redis. If it can't be saved, the bot doesn't ask for a "yes" it couldn't act on. An SR is never
+raised unconfirmed, so the request escalates instead: it's recorded in `sr_requests` with its
+category and fields, and the reply says so.
 
 ## Architecture
 
@@ -254,6 +267,13 @@ uv run ruff check . && uv run ruff format --check .
 ```
 
 CI runs lint, format check, the tests and a gitleaks secrets scan on every push.
+
+The last full live check was on 2026-11-15. The app, the stand-in and the Celery worker ran
+against the real cloud services, and every chat flow was driven over HTTP and in the chat page:
+small talk, answers, confirm → raise, duplicates, slot filling, corrections, cancel, status,
+history, notifications, and webhook replay and bad signatures. All 31 checks passed. The run
+also found a gap when Redis is down, which is now fixed. The checklist and results are in
+[docs/verification-2026-11-15.md](docs/verification-2026-11-15.md).
 
 ## Eval
 
